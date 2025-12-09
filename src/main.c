@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 199309L
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -55,6 +56,9 @@ int main(int argc, char *argv[]) {
 
     printf("Running clustering for %d images with threshold %.2f...\n", ITERATIONS, threshold);
 
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     for (int i = 0; i < ITERATIONS; i++) {
         Image current_image;
         generate_random_image(&current_image);
@@ -85,7 +89,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+
     printf("Analysis complete.\n");
+    printf("Clustering time: %.3f ms\n", elapsed_ms);
     printf("Total clusters created: %d\n", cluster_count);
     printf("Average images per cluster: %.2f\n", (double)ITERATIONS / cluster_count);
 
