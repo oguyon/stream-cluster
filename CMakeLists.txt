@@ -2,8 +2,12 @@ cmake_minimum_required(VERSION 3.10)
 project(image_cluster C)
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
-add_executable(image_cluster src/main.c)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CFITSIO REQUIRED cfitsio)
 
-target_link_libraries(image_cluster m)
+include_directories(${CFITSIO_INCLUDE_DIRS} src)
+link_directories(${CFITSIO_LIBRARY_DIRS})
+
+add_executable(image_cluster src/cluster.c src/framedistance.c src/frameread.c)
+target_link_libraries(image_cluster ${CFITSIO_LIBRARIES} m)
