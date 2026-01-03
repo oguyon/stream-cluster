@@ -19,11 +19,12 @@ long get_frame_width();
 long get_frame_height();
 
 // Global variables for algorithm
-double rlim;
+double rlim = 0.0;
 double deltaprob = 0.01;
 int maxnbclust = 1000;
 long maxnbfr = 100000;
 char *fits_filename = NULL;
+int scandist_mode = 0;
 
 Cluster *clusters;
 double *dccarray; // 1D array simulating 2D: [i*maxNcl + j]
@@ -51,23 +52,81 @@ int compare_probs(const void *a, const void *b) {
     return 0;
 }
 
+int compare_doubles(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
 void print_usage(char *progname) {
     printf("Usage: %s <rlim> [options] <fits_file>\n", progname);
+    printf("       %s -scandist <fits_file>\n", progname);
     printf("Options:\n");
     printf("  -dprob <val>   Delta probability (default 0.01)\n");
     printf("  -maxcl <val>   Max number of clusters (default 1000)\n");
     printf("  -maxim <val>   Max number of frames (default 100000)\n");
+    printf("  -scandist      Measure distance between consecutive frames\n");
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
+    if (argc < 2) {
         print_usage(argv[0]);
         return 1;
     }
 
-    rlim = atof(argv[1]);
+    int arg_idx = 1;
 
-    int arg_idx = 2;
+    // Check if first argument is -scandist
+    if (strcmp(argv[1], "-scandist") == 0) {
+        scandist_mode = 1;
+        arg_idx = 2;
+    } else {
+        // If not scandist mode, first argument must be rlim
+        // However, we want to be robust if user puts -scandist later?
+        // Let's assume standard usage: either starts with -scandist, OR starts with rlim.
+
+        // Check if argv[1] is a number (or at least not a flag starting with - followed by alpha)
+        // If it starts with '-', it might be a flag.
+        if (argv[1][0] == '-') {
+             // If it is a flag (e.g. -dprob), and we haven't seen -scandist, then rlim is missing.
+             // But we should check if -scandist is later in arguments?
+             // "Add an option -scandist".
+             // Let's iterate to find -scandist first.
+        }
+
+        // Simpler approach:
+        // Scan all args for -scandist.
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "-scandist") == 0) {
+                scandist_mode = 1;
+                break;
+            }
+        }
+
+        if (!scandist_mode) {
+             // If not scandist mode, rlim is required as first argument.
+             if (argv[1][0] == '-') {
+                  print_usage(argv[0]);
+                  return 1;
+             }
+             rlim = atof(argv[1]);
+             arg_idx = 2;
+        } else {
+             // In scandist mode. If argv[1] is not -scandist, maybe it is rlim (ignored) or fits file?
+             // If user typed `image_cluster -scandist file.fits`, argv[1] is -scandist.
+             // If user typed `image_cluster 0.5 -scandist file.fits`, argv[1] is 0.5.
+             if (strcmp(argv[1], "-scandist") != 0 && argv[1][0] != '-') {
+                 // Assume it is rlim and consume it? Or just ignore?
+                 // Let's consume it to avoid confusion with filename.
+                 arg_idx = 2;
+             } else {
+                 arg_idx = 1;
+             }
+        }
+    }
+
     while (arg_idx < argc) {
         if (strcmp(argv[arg_idx], "-dprob") == 0) {
             if (arg_idx + 1 >= argc) { print_usage(argv[0]); return 1; }
@@ -78,6 +137,8 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[arg_idx], "-maxim") == 0) {
             if (arg_idx + 1 >= argc) { print_usage(argv[0]); return 1; }
             maxnbfr = atol(argv[++arg_idx]);
+        } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
+            scandist_mode = 1;
         } else {
             fits_filename = argv[arg_idx];
         }
@@ -91,6 +152,97 @@ int main(int argc, char *argv[]) {
 
     if (init_frameread(fits_filename) != 0) {
         return 1;
+    }
+
+    if (scandist_mode) {
+        long nframes = get_num_frames();
+        if (nframes < 2) {
+            printf("Not enough frames to calculate distances.\n");
+            close_frameread();
+            return 0;
+        }
+
+        // We can limit frames by maxnbfr if needed, but statistics usually over whole set?
+        // Prompt says "measures the distance between consecutive frames in the input cube".
+        // Let's assume all frames unless maxnbfr is specified (which defaults to 100000).
+        long process_limit = (nframes > maxnbfr) ? maxnbfr : nframes;
+
+        // Array to store distances. n frames have n-1 intervals.
+        double *distances = (double *)malloc((process_limit - 1) * sizeof(double));
+        if (!distances) {
+            perror("Memory allocation failed");
+            close_frameread();
+            return 1;
+        }
+
+        Frame *prev = getframe();
+        if (!prev) {
+             free(distances);
+             close_frameread();
+             return 1;
+        }
+
+        long count = 0;
+        // Loop from 1 to process_limit-1
+        for (long i = 1; i < process_limit; i++) {
+            Frame *curr = getframe();
+            if (!curr) break;
+
+            distances[count++] = get_dist(prev, curr);
+
+            free_frame(prev);
+            prev = curr;
+        }
+        free_frame(prev); // Free the last one
+
+        if (count > 0) {
+            qsort(distances, count, sizeof(double), compare_doubles);
+
+            double min_val = distances[0];
+            double max_val = distances[count - 1];
+            double median_val;
+            double p20_val;
+            double p80_val;
+
+            // Median
+            if (count % 2 == 1) {
+                median_val = distances[count / 2];
+            } else {
+                median_val = (distances[count / 2 - 1] + distances[count / 2]) / 2.0;
+            }
+
+            // Percentile 20
+            // Index logic: (N-1)*p.
+            double p20_idx = (count - 1) * 0.2;
+            int p20_i = (int)p20_idx;
+            double p20_f = p20_idx - p20_i;
+            if (p20_i + 1 < count)
+                 p20_val = distances[p20_i] * (1.0 - p20_f) + distances[p20_i + 1] * p20_f;
+            else
+                 p20_val = distances[p20_i];
+
+            // Percentile 80
+            double p80_idx = (count - 1) * 0.8;
+            int p80_i = (int)p80_idx;
+            double p80_f = p80_idx - p80_i;
+            if (p80_i + 1 < count)
+                 p80_val = distances[p80_i] * (1.0 - p80_f) + distances[p80_i + 1] * p80_f;
+            else
+                 p80_val = distances[p80_i];
+
+            printf("Distance statistics (%ld intervals):\n", count);
+            printf("Min: %.6f\n", min_val);
+            printf("20%%: %.6f\n", p20_val);
+            printf("Median: %.6f\n", median_val);
+            printf("80%%: %.6f\n", p80_val);
+            printf("Max: %.6f\n", max_val);
+        } else {
+            printf("No distances calculated.\n");
+        }
+
+        free(distances);
+        close_frameread();
+        return 0;
     }
 
     // Allocate memory
