@@ -233,11 +233,11 @@ int main(int argc, char *argv[]) {
                  p80_val = distances[p80_i];
 
             printf("Distance statistics (%ld intervals):\n", count);
-            printf("Min: %.6f\n", min_val);
-            printf("20%%: %.6f\n", p20_val);
-            printf("Median: %.6f\n", median_val);
-            printf("80%%: %.6f\n", p80_val);
-            printf("Max: %.6f\n", max_val);
+            printf("%-10s %.6f\n", "Min:", min_val);
+            printf("%-10s %.6f\n", "20%:", p20_val);
+            printf("%-10s %.6f\n", "Median:", median_val);
+            printf("%-10s %.6f\n", "80%:", p80_val);
+            printf("%-10s %.6f\n", "Max:", max_val);
         } else {
             printf("No distances calculated.\n");
         }
