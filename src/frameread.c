@@ -99,6 +99,10 @@ void close_frameread() {
     }
 }
 
+void reset_frameread() {
+    current_frame_idx = 0;
+}
+
 long get_num_frames() {
     return num_frames;
 }
