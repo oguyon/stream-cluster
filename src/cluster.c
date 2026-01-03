@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 #include <fitsio.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "common.h"
 
@@ -291,9 +293,18 @@ int main(int argc, char *argv[]) {
     if (actual_frames > maxnbfr) actual_frames = maxnbfr;
     assignments = (int *)malloc(actual_frames * sizeof(int));
 
-    FILE *ascii_out = fopen("output.txt", "w");
+    // Create output directory
+    struct stat st = {0};
+    if (stat("clusterdat", &st) == -1) {
+        if (mkdir("clusterdat", 0777) != 0) {
+            perror("Failed to create clusterdat directory");
+            return 1;
+        }
+    }
+
+    FILE *ascii_out = fopen("clusterdat/output.txt", "w");
     if (!ascii_out) {
-        perror("Failed to open output.txt");
+        perror("Failed to open clusterdat/output.txt");
         return 1;
     }
 
@@ -446,7 +457,7 @@ int main(int argc, char *argv[]) {
     // Write Anchors FITS
     int status = 0;
     fitsfile *afptr;
-    fits_create_file(&afptr, "!anchors.fits", &status);
+    fits_create_file(&afptr, "!clusterdat/anchors.fits", &status);
     long naxes[3] = { get_frame_width(), get_frame_height(), num_clusters };
     fits_create_img(afptr, DOUBLE_IMG, 3, naxes, &status);
 
@@ -475,7 +486,7 @@ int main(int argc, char *argv[]) {
         if (cluster_counts[c] == 0) continue;
 
         char fname[64];
-        sprintf(fname, "!cluster_%d.fits", c);
+        sprintf(fname, "!clusterdat/cluster_%d.fits", c);
 
         fitsfile *cfptr;
         fits_create_file(&cfptr, fname, &status);
