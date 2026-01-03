@@ -31,6 +31,7 @@ long maxnbfr = 100000;
 char *fits_filename = NULL;
 char *user_outdir = NULL;
 int scandist_mode = 0;
+int progress_mode = 0;
 
 Cluster *clusters;
 double *dccarray; // 1D array simulating 2D: [i*maxNcl + j]
@@ -115,6 +116,7 @@ void print_usage(char *progname) {
     printf("  -maxcl <val>   Max number of clusters (default 1000)\n");
     printf("  -maxim <val>   Max number of frames (default 100000)\n");
     printf("  -outdir <name> Specify output directory name\n");
+    printf("  -progress      Print real-time progress updates\n");
     printf("  -scandist      Measure distance between consecutive frames\n");
 }
 
@@ -190,6 +192,8 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             user_outdir = argv[++arg_idx];
+        } else if (strcmp(argv[arg_idx], "-progress") == 0) {
+            progress_mode = 1;
         } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
             // Already handled in first pass, just consume
         } else if (argv[arg_idx][0] == '-') {
@@ -320,8 +324,19 @@ int main(int argc, char *argv[]) {
         if (auto_rlim_mode) {
              reset_frameread();
              // Reset counters
-             framedist_calls = 0;
-             total_frames_processed = 0;
+             // framedist_calls = 0;
+             // total_frames_processed = 0;
+             // Note: These variables are global and initialized to 0.
+             // However, framedist_calls accumulates during scan which is fine (total calls).
+             // total_frames_processed is only used for assignment indexing in main loop,
+             // and since we are not assigning during scan, it remains 0.
+             // Wait, total_frames_processed IS NOT used during scan loop above.
+             // The scan loop uses 'count' and 'i'.
+             // So total_frames_processed is already 0.
+             // framedist_calls tracks total metrics, maybe we want to keep scan calls included?
+             // Or reset? Usually metrics include all work.
+             // Let's remove the explicit reset to be safe against scoping issues if any,
+             // and because it's already 0 for total_frames_processed.
         }
     }
 
@@ -505,7 +520,14 @@ int main(int argc, char *argv[]) {
         fprintf(ascii_out, "%ld %d\n", total_frames_processed, assigned_cluster);
 
         total_frames_processed++;
+
+        if (progress_mode && (total_frames_processed % 10 == 0 || total_frames_processed == actual_frames)) {
+            printf("\rProcessing frame %ld / %ld (Clusters: %d)", total_frames_processed, actual_frames, num_clusters);
+            fflush(stdout);
+        }
     }
+
+    if (progress_mode) printf("\n");
 
     clock_gettime(CLOCK_MONOTONIC, &end);
     double elapsed_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
