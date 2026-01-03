@@ -6,6 +6,7 @@
 #include <fitsio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <signal.h>
 
 #include "common.h"
 
@@ -36,6 +37,7 @@ char *fits_filename = NULL;
 char *user_outdir = NULL;
 int scandist_mode = 0;
 int progress_mode = 0;
+volatile sig_atomic_t stop_requested = 0;
 
 Cluster *clusters;
 double *dccarray; // 1D array simulating 2D: [i*maxNcl + j]
@@ -69,6 +71,10 @@ int compare_doubles(const void *a, const void *b) {
     if (da < db) return -1;
     if (da > db) return 1;
     return 0;
+}
+
+void handle_sigint(int sig) {
+    stop_requested = 1;
 }
 
 // Helper to create output directory name based on input filename
@@ -225,6 +231,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (!scandist_mode) {
+        signal(SIGINT, handle_sigint);
+        printf("CTRL+C to stop clustering and write results\n");
+    }
+
     if (scandist_mode || auto_rlim_mode) {
         long nframes = get_num_frames();
         if (nframes < 2) {
@@ -327,20 +338,6 @@ int main(int argc, char *argv[]) {
         // Reset for clustering
         if (auto_rlim_mode) {
              reset_frameread();
-             // Reset counters
-             // framedist_calls = 0;
-             // total_frames_processed = 0;
-             // Note: These variables are global and initialized to 0.
-             // However, framedist_calls accumulates during scan which is fine (total calls).
-             // total_frames_processed is only used for assignment indexing in main loop,
-             // and since we are not assigning during scan, it remains 0.
-             // Wait, total_frames_processed IS NOT used during scan loop above.
-             // The scan loop uses 'count' and 'i'.
-             // So total_frames_processed is already 0.
-             // framedist_calls tracks total metrics, maybe we want to keep scan calls included?
-             // Or reset? Usually metrics include all work.
-             // Let's remove the explicit reset to be safe against scoping issues if any,
-             // and because it's already 0 for total_frames_processed.
         }
     }
 
@@ -394,6 +391,12 @@ int main(int argc, char *argv[]) {
 
     Frame *current_frame;
     while ((current_frame = getframe()) != NULL) {
+        if (stop_requested) {
+            printf(ANSI_COLOR_ORANGE "\nStopping clustering on user request (CTRL+C).\n" ANSI_COLOR_RESET);
+            free_frame(current_frame); // Current frame not processed
+            break;
+        }
+
         if (total_frames_processed >= maxnbfr) {
             free_frame(current_frame);
             break;
