@@ -29,6 +29,7 @@ double deltaprob = 0.01;
 int maxnbclust = 1000;
 long maxnbfr = 100000;
 char *fits_filename = NULL;
+char *user_outdir = NULL;
 int scandist_mode = 0;
 
 Cluster *clusters;
@@ -113,6 +114,7 @@ void print_usage(char *progname) {
     printf("  -dprob <val>   Delta probability (default 0.01)\n");
     printf("  -maxcl <val>   Max number of clusters (default 1000)\n");
     printf("  -maxim <val>   Max number of frames (default 100000)\n");
+    printf("  -outdir <name> Specify output directory name\n");
     printf("  -scandist      Measure distance between consecutive frames\n");
 }
 
@@ -182,6 +184,12 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             maxnbfr = atol(argv[++arg_idx]);
+        } else if (strcmp(argv[arg_idx], "-outdir") == 0) {
+            if (arg_idx + 1 >= argc) {
+                fprintf(stderr, "Error: Missing value for option -outdir\n");
+                return 1;
+            }
+            user_outdir = argv[++arg_idx];
         } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
             // Already handled in first pass, just consume
         } else if (argv[arg_idx][0] == '-') {
@@ -331,7 +339,13 @@ int main(int argc, char *argv[]) {
     assignments = (int *)malloc(actual_frames * sizeof(int));
 
     // Create output directory
-    char *out_dir = create_output_dir_name(fits_filename);
+    char *out_dir = NULL;
+    if (user_outdir) {
+        out_dir = strdup(user_outdir);
+    } else {
+        out_dir = create_output_dir_name(fits_filename);
+    }
+
     if (!out_dir) {
         perror("Memory allocation failed for output directory name");
         return 1;
@@ -536,7 +550,7 @@ int main(int argc, char *argv[]) {
         if (cluster_counts[c] == 0) continue;
 
         char fname[1024];
-        sprintf(fname, "!%s/cluster_%d.fits", out_dir, c);
+        snprintf(fname, sizeof(fname), "!%s/cluster_%d.fits", out_dir, c);
 
         fitsfile *cfptr;
         fits_create_file(&cfptr, fname, &status);
