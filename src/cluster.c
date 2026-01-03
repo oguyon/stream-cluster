@@ -14,12 +14,15 @@ Frame* getframe();
 Frame* getframe_at(long index);
 void free_frame(Frame *frame);
 void close_frameread();
+void reset_frameread();
 long get_num_frames();
 long get_frame_width();
 long get_frame_height();
 
 // Global variables for algorithm
 double rlim = 0.0;
+int auto_rlim_mode = 0;
+double auto_rlim_factor = 0.0;
 double deltaprob = 0.01;
 int maxnbclust = 1000;
 long maxnbfr = 100000;
@@ -63,6 +66,10 @@ int compare_doubles(const void *a, const void *b) {
 void print_usage(char *progname) {
     printf("Usage: %s <rlim> [options] <fits_file>\n", progname);
     printf("       %s -scandist <fits_file>\n", progname);
+    printf("Arguments:\n");
+    printf("  <rlim>         Clustering radius limit. Can be:\n");
+    printf("                 - A float value (e.g., 10.5)\n");
+    printf("                 - Format 'a<val>' (e.g., a1.5) to set rlim = val * median_distance\n");
     printf("Options:\n");
     printf("  -dprob <val>   Delta probability (default 0.01)\n");
     printf("  -maxcl <val>   Max number of clusters (default 1000)\n");
@@ -87,23 +94,30 @@ int main(int argc, char *argv[]) {
     int arg_idx = 1;
 
     if (!scandist_mode) {
-        // Standard Mode: First argument must be rlim
-        // rlim is mandatory and must be the first argument
-        if (argv[1][0] == '-') {
-            fprintf(stderr, "Error: First argument must be rlim (numerical value), found option: %s\n", argv[1]);
+        // Standard Mode: First argument must be rlim or auto-rlim format "a%f"
+        if (argv[1][0] == 'a') {
+            // Auto rlim mode
+            char *endptr;
+            auto_rlim_factor = strtod(argv[1] + 1, &endptr);
+            if (*endptr != '\0') {
+                 fprintf(stderr, "Error: Invalid format for auto-rlim. Expected 'a<float>', got '%s'\n", argv[1]);
+                 return 1;
+            }
+            auto_rlim_mode = 1;
+            arg_idx = 2;
+        } else if (argv[1][0] == '-') {
+            fprintf(stderr, "Error: First argument must be rlim (numerical value) or auto-rlim (a<val>), found option: %s\n", argv[1]);
             print_usage(argv[0]);
             return 1;
+        } else {
+            char *endptr;
+            rlim = strtod(argv[1], &endptr);
+            if (*endptr != '\0') {
+                 fprintf(stderr, "Error: Invalid rlim value: %s\n", argv[1]);
+                 return 1;
+            }
+            arg_idx = 2;
         }
-
-        char *endptr;
-        rlim = strtod(argv[1], &endptr);
-        if (*endptr != '\0') {
-             // Not a valid number? Or partial? strtod is decent.
-             // If we want to be strict, we can check.
-             // But rlim might be "10.0".
-             // Assuming valid if not flag.
-        }
-        arg_idx = 2;
     } else {
         // Scandist Mode: No fixed positional arg required at start.
         arg_idx = 1;
@@ -156,7 +170,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (scandist_mode) {
+    if (scandist_mode || auto_rlim_mode) {
         long nframes = get_num_frames();
         if (nframes < 2) {
             printf("Not enough frames to calculate distances.\n");
@@ -164,9 +178,7 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
-        // We can limit frames by maxnbfr if needed, but statistics usually over whole set?
-        // Prompt says "measures the distance between consecutive frames in the input cube".
-        // Let's assume all frames unless maxnbfr is specified (which defaults to 100000).
+        // We can limit frames by maxnbfr if needed
         long process_limit = (nframes > maxnbfr) ? maxnbfr : nframes;
 
         // Array to store distances. n frames have n-1 intervals.
@@ -214,7 +226,6 @@ int main(int argc, char *argv[]) {
             }
 
             // Percentile 20
-            // Index logic: (N-1)*p.
             double p20_idx = (count - 1) * 0.2;
             int p20_i = (int)p20_idx;
             double p20_f = p20_idx - p20_i;
@@ -232,19 +243,39 @@ int main(int argc, char *argv[]) {
             else
                  p80_val = distances[p80_i];
 
-            printf("Distance statistics (%ld intervals):\n", count);
-            printf("%-10s %.6f\n", "Min:", min_val);
-            printf("%-10s %.6f\n", "20%:", p20_val);
-            printf("%-10s %.6f\n", "Median:", median_val);
-            printf("%-10s %.6f\n", "80%:", p80_val);
-            printf("%-10s %.6f\n", "Max:", max_val);
+            if (scandist_mode) {
+                printf("Distance statistics (%ld intervals):\n", count);
+                printf("%-10s %.6f\n", "Min:", min_val);
+                printf("%-10s %.6f\n", "20%:", p20_val);
+                printf("%-10s %.6f\n", "Median:", median_val);
+                printf("%-10s %.6f\n", "80%:", p80_val);
+                printf("%-10s %.6f\n", "Max:", max_val);
+
+                free(distances);
+                close_frameread();
+                return 0;
+            } else if (auto_rlim_mode) {
+                rlim = auto_rlim_factor * median_val;
+                printf("Auto-rlim: Median distance = %.6f, Multiplier = %.6f -> rlim = %.6f\n", median_val, auto_rlim_factor, rlim);
+            }
         } else {
             printf("No distances calculated.\n");
+            if (scandist_mode) {
+                free(distances);
+                close_frameread();
+                return 0;
+            }
         }
 
         free(distances);
-        close_frameread();
-        return 0;
+
+        // Reset for clustering
+        if (auto_rlim_mode) {
+             reset_frameread();
+             // Reset counters
+             framedist_calls = 0;
+             total_frames_processed = 0;
+        }
     }
 
     // Allocate memory
