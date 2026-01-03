@@ -9,6 +9,10 @@
 
 #include "common.h"
 
+#define ANSI_COLOR_ORANGE  "\x1b[38;5;208m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 // Prototype declarations
 double framedist(Frame *a, Frame *b);
 int init_frameread(char *filename);
@@ -502,7 +506,7 @@ int main(int argc, char *argv[]) {
                 } else {
                     // Max clusters reached. Stop program?
                     // "Stop program if/when number of clusters reaches this limit"
-                    printf("Max clusters limit reached.\n");
+                    printf(ANSI_COLOR_ORANGE "Max clusters limit reached.\n" ANSI_COLOR_RESET);
                     printf("Frames clustered: %ld\n", total_frames_processed);
                     free_frame(current_frame);
                     break;
@@ -522,7 +526,9 @@ int main(int argc, char *argv[]) {
         total_frames_processed++;
 
         if (progress_mode && (total_frames_processed % 10 == 0 || total_frames_processed == actual_frames)) {
-            printf("\rProcessing frame %ld / %ld (Clusters: %d)", total_frames_processed, actual_frames, num_clusters);
+            double avg_dists = (total_frames_processed > 0) ? (double)framedist_calls / total_frames_processed : 0.0;
+            printf("\rProcessing frame %ld / %ld (Clusters: %d, Dists: %ld, Avg Dists/Frame: %.1f)",
+                   total_frames_processed, actual_frames, num_clusters, framedist_calls, avg_dists);
             fflush(stdout);
         }
     }
@@ -531,6 +537,10 @@ int main(int argc, char *argv[]) {
 
     clock_gettime(CLOCK_MONOTONIC, &end);
     double elapsed_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+
+    if (num_clusters < maxnbclust) {
+        printf(ANSI_COLOR_GREEN "All frames clustered.\n" ANSI_COLOR_RESET);
+    }
 
     printf("Analysis complete.\n");
     printf("Total clusters: %d\n", num_clusters);
