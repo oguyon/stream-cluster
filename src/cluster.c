@@ -76,77 +76,79 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int arg_idx = 1;
-
-    // Check if first argument is -scandist
-    if (strcmp(argv[1], "-scandist") == 0) {
-        scandist_mode = 1;
-        arg_idx = 2;
-    } else {
-        // If not scandist mode, first argument must be rlim
-        // However, we want to be robust if user puts -scandist later?
-        // Let's assume standard usage: either starts with -scandist, OR starts with rlim.
-
-        // Check if argv[1] is a number (or at least not a flag starting with - followed by alpha)
-        // If it starts with '-', it might be a flag.
-        if (argv[1][0] == '-') {
-             // If it is a flag (e.g. -dprob), and we haven't seen -scandist, then rlim is missing.
-             // But we should check if -scandist is later in arguments?
-             // "Add an option -scandist".
-             // Let's iterate to find -scandist first.
-        }
-
-        // Simpler approach:
-        // Scan all args for -scandist.
-        for (int i = 1; i < argc; i++) {
-            if (strcmp(argv[i], "-scandist") == 0) {
-                scandist_mode = 1;
-                break;
-            }
-        }
-
-        if (!scandist_mode) {
-             // If not scandist mode, rlim is required as first argument.
-             if (argv[1][0] == '-') {
-                  print_usage(argv[0]);
-                  return 1;
-             }
-             rlim = atof(argv[1]);
-             arg_idx = 2;
-        } else {
-             // In scandist mode. If argv[1] is not -scandist, maybe it is rlim (ignored) or fits file?
-             // If user typed `image_cluster -scandist file.fits`, argv[1] is -scandist.
-             // If user typed `image_cluster 0.5 -scandist file.fits`, argv[1] is 0.5.
-             if (strcmp(argv[1], "-scandist") != 0 && argv[1][0] != '-') {
-                 // Assume it is rlim and consume it? Or just ignore?
-                 // Let's consume it to avoid confusion with filename.
-                 arg_idx = 2;
-             } else {
-                 arg_idx = 1;
-             }
+    // First pass: Detect -scandist to set mode
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-scandist") == 0) {
+            scandist_mode = 1;
+            break;
         }
     }
 
+    int arg_idx = 1;
+
+    if (!scandist_mode) {
+        // Standard Mode: First argument must be rlim
+        // rlim is mandatory and must be the first argument
+        if (argv[1][0] == '-') {
+            fprintf(stderr, "Error: First argument must be rlim (numerical value), found option: %s\n", argv[1]);
+            print_usage(argv[0]);
+            return 1;
+        }
+
+        char *endptr;
+        rlim = strtod(argv[1], &endptr);
+        if (*endptr != '\0') {
+             // Not a valid number? Or partial? strtod is decent.
+             // If we want to be strict, we can check.
+             // But rlim might be "10.0".
+             // Assuming valid if not flag.
+        }
+        arg_idx = 2;
+    } else {
+        // Scandist Mode: No fixed positional arg required at start.
+        arg_idx = 1;
+    }
+
+    // Second pass: Parse options and FITS file
     while (arg_idx < argc) {
         if (strcmp(argv[arg_idx], "-dprob") == 0) {
-            if (arg_idx + 1 >= argc) { print_usage(argv[0]); return 1; }
+            if (arg_idx + 1 >= argc) {
+                fprintf(stderr, "Error: Missing value for option -dprob\n");
+                return 1;
+            }
             deltaprob = atof(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-maxcl") == 0) {
-            if (arg_idx + 1 >= argc) { print_usage(argv[0]); return 1; }
+            if (arg_idx + 1 >= argc) {
+                fprintf(stderr, "Error: Missing value for option -maxcl\n");
+                return 1;
+            }
             maxnbclust = atoi(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-maxim") == 0) {
-            if (arg_idx + 1 >= argc) { print_usage(argv[0]); return 1; }
+            if (arg_idx + 1 >= argc) {
+                fprintf(stderr, "Error: Missing value for option -maxim\n");
+                return 1;
+            }
             maxnbfr = atol(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
-            scandist_mode = 1;
+            // Already handled in first pass, just consume
+        } else if (argv[arg_idx][0] == '-') {
+            fprintf(stderr, "Error: Unknown option: %s\n", argv[arg_idx]);
+            print_usage(argv[0]);
+            return 1;
         } else {
+            // Positional argument: FITS file
+            if (fits_filename != NULL) {
+                fprintf(stderr, "Error: Too many arguments or multiple FITS files specified (already have '%s', found '%s')\n", fits_filename, argv[arg_idx]);
+                return 1;
+            }
             fits_filename = argv[arg_idx];
         }
         arg_idx++;
     }
 
     if (!fits_filename) {
-        printf("Error: No FITS file specified.\n");
+        fprintf(stderr, "Error: Missing input FITS file.\n");
+        if (!scandist_mode) print_usage(argv[0]);
         return 1;
     }
 
