@@ -38,7 +38,9 @@ char *user_outdir = NULL;
 int scandist_mode = 0;
 int progress_mode = 0;
 int average_mode = 0;
+int distall_mode = 0;
 volatile sig_atomic_t stop_requested = 0;
+FILE *distall_out = NULL;
 
 Cluster *clusters;
 double *dccarray; // 1D array simulating 2D: [i*maxNcl + j]
@@ -46,6 +48,7 @@ int *probsortedclindex;
 int *clmembflag;
 int num_clusters = 0;
 long framedist_calls = 0;
+long clusters_pruned = 0;
 
 // Assignments for output
 int *assignments = NULL;
@@ -54,7 +57,11 @@ long total_frames_processed = 0;
 // Wrapper for framedist to count calls
 double get_dist(Frame *a, Frame *b) {
     framedist_calls++;
-    return framedist(a, b);
+    double d = framedist(a, b);
+    if (distall_mode && distall_out) {
+        fprintf(distall_out, "%d %d %.6f\n", a->id, b->id, d);
+    }
+    return d;
 }
 
 // Comparison function for qsort
@@ -127,6 +134,7 @@ void print_usage(char *progname) {
     printf("  -maxcl <val>   Max number of clusters (default 1000)\n");
     printf("  -maxim <val>   Max number of frames (default 100000)\n");
     printf("  -avg           Compute average frame per cluster\n");
+    printf("  -distall       Save all computed distances to distall.txt\n");
     printf("  -outdir <name> Specify output directory name\n");
     printf("  -progress      Print real-time progress updates\n");
     printf("  -scandist      Measure distance between consecutive frames\n");
@@ -200,6 +208,8 @@ int main(int argc, char *argv[]) {
             maxnbfr = atol(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-avg") == 0) {
             average_mode = 1;
+        } else if (strcmp(argv[arg_idx], "-distall") == 0) {
+            distall_mode = 1;
         } else if (strcmp(argv[arg_idx], "-outdir") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -outdir\n");
@@ -390,6 +400,19 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (distall_mode) {
+        snprintf(out_path, sizeof(out_path), "%s/distall.txt", out_dir);
+        distall_out = fopen(out_path, "w");
+        if (!distall_out) {
+            perror("Failed to open distall.txt in output directory");
+            // Not critical? Or should we exit? Let's warn and continue or exit.
+            // Exit is safer.
+            fclose(ascii_out);
+            free(out_dir);
+            return 1;
+        }
+    }
+
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
@@ -481,8 +504,8 @@ int main(int argc, char *argv[]) {
                         dccarray[cl * maxnbclust + cj] = dcc;
                      }
 
-                     if (dcc - dfc > rlim) clmembflag[cl] = 0;
-                     if (dfc - dcc > rlim) clmembflag[cl] = 0;
+                     if (dcc - dfc > rlim) { clmembflag[cl] = 0; clusters_pruned++; }
+                     if (dfc - dcc > rlim) { clmembflag[cl] = 0; clusters_pruned++; }
                  }
 
                  // Step 6: Increment k
@@ -534,8 +557,8 @@ int main(int argc, char *argv[]) {
 
         if (progress_mode && (total_frames_processed % 10 == 0 || total_frames_processed == actual_frames)) {
             double avg_dists = (total_frames_processed > 0) ? (double)framedist_calls / total_frames_processed : 0.0;
-            printf("\rProcessing frame %ld / %ld (Clusters: %d, Dists: %ld, Avg Dists/Frame: %.1f)",
-                   total_frames_processed, actual_frames, num_clusters, framedist_calls, avg_dists);
+            printf("\rProcessing frame %ld / %ld (Clusters: %d, Dists: %ld, Avg Dists/Frame: %.1f, Pruned: %ld)",
+                   total_frames_processed, actual_frames, num_clusters, framedist_calls, avg_dists, clusters_pruned);
             fflush(stdout);
         }
     }
@@ -555,6 +578,24 @@ int main(int argc, char *argv[]) {
     printf("Framedist calls: %ld\n", framedist_calls);
 
     fclose(ascii_out);
+    if (distall_out) fclose(distall_out);
+
+    // Write Cluster-Cluster Distances (dcc)
+    snprintf(out_path, sizeof(out_path), "%s/dcc.txt", out_dir);
+    FILE *dcc_out = fopen(out_path, "w");
+    if (dcc_out) {
+        for (int i = 0; i < num_clusters; i++) {
+            for (int j = 0; j < num_clusters; j++) {
+                // dccarray is flattened: [i * maxnbclust + j]
+                // dccarray was initialized to -1.
+                double d = dccarray[i * maxnbclust + j];
+                if (d >= 0) {
+                    fprintf(dcc_out, "%d %d %.6f\n", i, j, d);
+                }
+            }
+        }
+        fclose(dcc_out);
+    }
 
     // Write Anchors FITS
     int status = 0;
