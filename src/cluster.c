@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +63,43 @@ int compare_doubles(const void *a, const void *b) {
     if (da < db) return -1;
     if (da > db) return 1;
     return 0;
+}
+
+// Helper to create output directory name based on input filename
+char* create_output_dir_name(const char* input_file) {
+    // Extract filename from path
+    const char *base = strrchr(input_file, '/');
+    if (base) {
+        base++; // Skip slash
+    } else {
+        base = input_file;
+    }
+
+    // Duplicate base so we can modify it
+    char *name = strdup(base);
+    if (!name) return NULL;
+
+    // Check for extensions to remove
+    // "filename.fits" -> "filename"
+    // "filename.fits.fz" -> "filename"
+
+    // Check for .fits.fz first
+    size_t len = strlen(name);
+    if (len > 8 && strcmp(name + len - 8, ".fits.fz") == 0) {
+        name[len - 8] = '\0';
+    } else if (len > 5 && strcmp(name + len - 5, ".fits") == 0) {
+        name[len - 5] = '\0';
+    }
+
+    // Create final string "basename.clusterdat"
+    size_t new_len = strlen(name) + strlen(".clusterdat") + 1;
+    char *out_dir = (char *)malloc(new_len);
+    if (out_dir) {
+        sprintf(out_dir, "%s.clusterdat", name);
+    }
+
+    free(name);
+    return out_dir;
 }
 
 void print_usage(char *progname) {
@@ -294,17 +331,28 @@ int main(int argc, char *argv[]) {
     assignments = (int *)malloc(actual_frames * sizeof(int));
 
     // Create output directory
+    char *out_dir = create_output_dir_name(fits_filename);
+    if (!out_dir) {
+        perror("Memory allocation failed for output directory name");
+        return 1;
+    }
+
     struct stat st = {0};
-    if (stat("clusterdat", &st) == -1) {
-        if (mkdir("clusterdat", 0777) != 0) {
-            perror("Failed to create clusterdat directory");
+    if (stat(out_dir, &st) == -1) {
+        if (mkdir(out_dir, 0777) != 0) {
+            perror("Failed to create output directory");
+            free(out_dir);
             return 1;
         }
     }
 
-    FILE *ascii_out = fopen("clusterdat/output.txt", "w");
+    char out_path[1024];
+    snprintf(out_path, sizeof(out_path), "%s/output.txt", out_dir);
+
+    FILE *ascii_out = fopen(out_path, "w");
     if (!ascii_out) {
-        perror("Failed to open clusterdat/output.txt");
+        perror("Failed to open output.txt in output directory");
+        free(out_dir);
         return 1;
     }
 
@@ -426,6 +474,7 @@ int main(int argc, char *argv[]) {
                     // Max clusters reached. Stop program?
                     // "Stop program if/when number of clusters reaches this limit"
                     printf("Max clusters limit reached.\n");
+                    printf("Frames clustered: %ld\n", total_frames_processed);
                     free_frame(current_frame);
                     break;
                 }
@@ -457,7 +506,8 @@ int main(int argc, char *argv[]) {
     // Write Anchors FITS
     int status = 0;
     fitsfile *afptr;
-    fits_create_file(&afptr, "!clusterdat/anchors.fits", &status);
+    snprintf(out_path, sizeof(out_path), "!%s/anchors.fits", out_dir);
+    fits_create_file(&afptr, out_path, &status);
     long naxes[3] = { get_frame_width(), get_frame_height(), num_clusters };
     fits_create_img(afptr, DOUBLE_IMG, 3, naxes, &status);
 
@@ -485,8 +535,8 @@ int main(int argc, char *argv[]) {
     for (int c = 0; c < num_clusters; c++) {
         if (cluster_counts[c] == 0) continue;
 
-        char fname[64];
-        sprintf(fname, "!clusterdat/cluster_%d.fits", c);
+        char fname[1024];
+        sprintf(fname, "!%s/cluster_%d.fits", out_dir, c);
 
         fitsfile *cfptr;
         fits_create_file(&cfptr, fname, &status);
@@ -521,6 +571,7 @@ int main(int argc, char *argv[]) {
     free(probsortedclindex);
     free(clmembflag);
     free(assignments);
+    free(out_dir);
 
     close_frameread();
 
