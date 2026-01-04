@@ -713,41 +713,6 @@ int main(int argc, char *argv[]) {
                      break;
                  }
 
-                 // Update gprobs
-                 if (gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) {
-                     // For each frame k that visited cluster cj
-                     for (int i = 0; i < cluster_visitors[cj].count; i++) {
-                         int k_idx = cluster_visitors[cj].frames[i];
-                         // Find the distance that frame k computed to cluster cj
-                         // This requires searching frame_infos[k_idx].cluster_indices
-                         // Optimisation: if we stored distance in visitor list it would be faster.
-                         // But for now, search. FrameInfo stores limited number of dists.
-
-                         double dist_k = -1.0;
-                         for (int d_idx = 0; d_idx < frame_infos[k_idx].num_dists; d_idx++) {
-                             if (frame_infos[k_idx].cluster_indices[d_idx] == cj) {
-                                 dist_k = frame_infos[k_idx].distances[d_idx];
-                                 break;
-                             }
-                         }
-
-                         if (dist_k >= 0) {
-                             double dr = fabs(dfc - dist_k) / rlim;
-                             double val = fmatch(dr);
-
-                             if (verbose_level >= 2) {
-                                 printf("  [VV] Frame %ld vs Frame %d (Cluster %d): dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
-                                        total_frames_processed, k_idx, cj, dr, val,
-                                        frame_infos[k_idx].assignment,
-                                        current_gprobs[frame_infos[k_idx].assignment],
-                                        current_gprobs[frame_infos[k_idx].assignment] * val);
-                             }
-
-                             current_gprobs[frame_infos[k_idx].assignment] *= val;
-                         }
-                     }
-                 }
-
                  // Step 5: Prune candidates
                  for (int cl = 0; cl < num_clusters; cl++) {
                      if (clmembflag[cl] == 0) continue;
@@ -776,6 +741,45 @@ int main(int argc, char *argv[]) {
                      // We don't strictly need to count this as "pruned" or maybe we do.
                      // Let's count it to be consistent with "eliminated candidate".
                      // But strictly speaking, we just visited it and rejected it.
+                 }
+
+                 // Update gprobs
+                 if (gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) {
+                     // For each frame k that visited cluster cj
+                     for (int i = 0; i < cluster_visitors[cj].count; i++) {
+                         int k_idx = cluster_visitors[cj].frames[i];
+
+                         int target_cl = frame_infos[k_idx].assignment;
+                         if (clmembflag[target_cl] == 0) continue;
+
+                         // Find the distance that frame k computed to cluster cj
+                         // This requires searching frame_infos[k_idx].cluster_indices
+                         // Optimisation: if we stored distance in visitor list it would be faster.
+                         // But for now, search. FrameInfo stores limited number of dists.
+
+                         double dist_k = -1.0;
+                         for (int d_idx = 0; d_idx < frame_infos[k_idx].num_dists; d_idx++) {
+                             if (frame_infos[k_idx].cluster_indices[d_idx] == cj) {
+                                 dist_k = frame_infos[k_idx].distances[d_idx];
+                                 break;
+                             }
+                         }
+
+                         if (dist_k >= 0) {
+                             double dr = fabs(dfc - dist_k) / rlim;
+                             double val = fmatch(dr);
+
+                             if (verbose_level >= 2) {
+                                 printf("  [VV] Frame %ld vs Frame %d (Cluster %d): dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
+                                        total_frames_processed, k_idx, cj, dr, val,
+                                        target_cl,
+                                        current_gprobs[target_cl],
+                                        current_gprobs[target_cl] * val);
+                             }
+
+                             current_gprobs[target_cl] *= val;
+                         }
+                     }
                  }
 
                  // Step 6: Handled by loop logic (pruning is done above)
