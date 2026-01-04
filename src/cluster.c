@@ -570,6 +570,15 @@ int main(int argc, char *argv[]) {
             // `free_frame` frees data.
             // Let's modify logic: ownership transfer.
             // If we use current_frame as anchor, we set current_frame->data = NULL before freeing.
+
+            // Add the first frame as a visitor to the first cluster
+            add_visitor(&cluster_visitors[0], total_frames_processed);
+
+            // Populate temp buffers so frame_infos gets recorded for Frame 0
+            temp_indices[0] = 0;
+            temp_dists[0] = 0.0;
+            temp_count = 1;
+
         } else {
             // Step 1: Normalize probabilities
             double sum_prob = 0.0;
@@ -693,6 +702,19 @@ int main(int argc, char *argv[]) {
 
                      if (dcc - dfc > rlim) { clmembflag[cl] = 0; clusters_pruned++; }
                      if (dfc - dcc > rlim) { clmembflag[cl] = 0; clusters_pruned++; }
+                 }
+
+                 // Explicitly prune current cluster if not assigned to avoid infinite loop (e.g., if dfc == rlim)
+                 if (clmembflag[cj]) {
+                     clmembflag[cj] = 0;
+                     // Only increment pruned count if not already pruned by loop above (though loop checks cj too)
+                     // If loop pruned it, it's 0. If loop didn't (e.g. dfc == rlim), we prune it here.
+                     // Note: pruning logic above: dfc - dcc > rlim. For cj, dcc=0, so dfc > rlim.
+                     // If dfc == rlim, it wasn't pruned above.
+                     // So we prune it now.
+                     // We don't strictly need to count this as "pruned" or maybe we do.
+                     // Let's count it to be consistent with "eliminated candidate".
+                     // But strictly speaking, we just visited it and rejected it.
                  }
 
                  // Step 6: Handled by loop logic (pruning is done above)
