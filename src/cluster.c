@@ -54,6 +54,19 @@ typedef struct {
     int capacity;
 } VisitorList;
 
+typedef struct {
+    int id;
+    double p;
+} Candidate;
+
+int compare_candidates(const void *a, const void *b) {
+    Candidate *ca = (Candidate *)a;
+    Candidate *cb = (Candidate *)b;
+    if (ca->p < cb->p) return 1;
+    if (ca->p > cb->p) return -1;
+    return 0;
+}
+
 // Helper functions for VisitorList
 void add_visitor(VisitorList *list, int frame_idx) {
     if (list->count >= list->capacity) {
@@ -516,6 +529,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Candidate buffer for verbose logging
+    Candidate *verbose_candidates = NULL;
+    if (verbose_level >= 2) {
+        verbose_candidates = (Candidate *)malloc(maxnbclust * sizeof(Candidate));
+    }
+
     char out_path[1024];
     snprintf(out_path, sizeof(out_path), "%s/frame_membership.txt", out_dir);
 
@@ -622,6 +641,31 @@ int main(int argc, char *argv[]) {
             // We can unify loop structure or branch.
 
             while (1) {
+                 if (verbose_level >= 2 && verbose_candidates) {
+                     int vcount = 0;
+                     for (int i = 0; i < num_clusters; i++) {
+                         if (clmembflag[i]) {
+                             double p = clusters[i].prob;
+                             if (gprob_mode) {
+                                 p *= current_gprobs[i];
+                             }
+                             verbose_candidates[vcount].id = i;
+                             verbose_candidates[vcount].p = p;
+                             vcount++;
+                         }
+                     }
+
+                     if (vcount > 0) {
+                         qsort(verbose_candidates, vcount, sizeof(Candidate), compare_candidates);
+                         printf("  [VV] Cluster ranking:");
+                         for (int i = 0; i < vcount; i++) {
+                             printf(" [%d %.6f]", verbose_candidates[i].id, verbose_candidates[i].p);
+                             if (i < vcount - 1) printf(" >");
+                         }
+                         printf("\n");
+                     }
+                 }
+
                  int cj = -1;
 
                  if (!gprob_mode) {
@@ -967,6 +1011,7 @@ int main(int argc, char *argv[]) {
     free(frame_infos);
     free(temp_indices);
     free(temp_dists);
+    if (verbose_candidates) free(verbose_candidates);
 
     for (int i = 0; i < maxnbclust; i++) {
         if (cluster_visitors[i].frames) free(cluster_visitors[i].frames);
