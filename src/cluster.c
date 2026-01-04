@@ -655,6 +655,20 @@ int main(int argc, char *argv[]) {
                      temp_count++;
                  }
 
+                 // Add current frame to visitors of cj
+                 add_visitor(&cluster_visitors[cj], total_frames_processed);
+
+                 if (dfc < rlim) {
+                     // Allocate to this cluster
+                     assigned_cluster = cj;
+                     clusters[cj].prob += deltaprob;
+                     found = 1;
+                     if (verbose_level >= 2) {
+                         printf(ANSI_COLOR_GREEN "  [VV] Frame %ld assigned to Cluster %d\n" ANSI_COLOR_RESET, total_frames_processed, assigned_cluster);
+                     }
+                     break;
+                 }
+
                  // Update gprobs
                  if (gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) {
                      // For each frame k that visited cluster cj
@@ -688,20 +702,6 @@ int main(int argc, char *argv[]) {
                              current_gprobs[frame_infos[k_idx].assignment] *= val;
                          }
                      }
-                 }
-
-                 // Add current frame to visitors of cj
-                 add_visitor(&cluster_visitors[cj], total_frames_processed);
-
-                 if (dfc < rlim) {
-                     // Allocate to this cluster
-                     assigned_cluster = cj;
-                     clusters[cj].prob += deltaprob;
-                     found = 1;
-                     if (verbose_level >= 2) {
-                         printf(ANSI_COLOR_GREEN "  [VV] Frame %ld assigned to Cluster %d\n" ANSI_COLOR_RESET, total_frames_processed, assigned_cluster);
-                     }
-                     break;
                  }
 
                  // Step 5: Prune candidates
