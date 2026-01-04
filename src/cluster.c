@@ -543,7 +543,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (verbose_level >= 2) {
-            printf("  [VV] Processing Frame %ld\n", total_frames_processed);
+            printf("\n  [VV] Processing Frame %ld\n", total_frames_processed);
         }
 
         int assigned_cluster = -1;
