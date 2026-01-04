@@ -55,11 +55,12 @@ int *assignments = NULL;
 long total_frames_processed = 0;
 
 // Wrapper for framedist to count calls
-double get_dist(Frame *a, Frame *b) {
+double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob) {
     framedist_calls++;
     double d = framedist(a, b);
     if (distall_mode && distall_out) {
-        fprintf(distall_out, "%d %d %.6f\n", a->id, b->id, d);
+        double ratio = (rlim > 0.0) ? d / rlim : -1.0;
+        fprintf(distall_out, "%d %d %.6f %.6f %d %.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob);
     }
     return d;
 }
@@ -245,6 +246,50 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Create output directory early so we can write logs if needed
+    char *out_dir = NULL;
+    if (user_outdir) {
+        out_dir = strdup(user_outdir);
+    } else {
+        out_dir = create_output_dir_name(fits_filename);
+    }
+
+    if (!out_dir) {
+        perror("Memory allocation failed for output directory name");
+        return 1;
+    }
+
+    struct stat st = {0};
+    if (stat(out_dir, &st) == -1) {
+        if (mkdir(out_dir, 0777) != 0) {
+            perror("Failed to create output directory");
+            free(out_dir);
+            return 1;
+        }
+    }
+
+    if (distall_mode) {
+        char out_path[1024];
+        snprintf(out_path, sizeof(out_path), "%s/distall.txt", out_dir);
+        distall_out = fopen(out_path, "w");
+        if (!distall_out) {
+            perror("Failed to open distall.txt in output directory");
+            free(out_dir);
+            return 1;
+        }
+
+        // Write header
+        fprintf(distall_out, "# rlim: %.6f\n", rlim);
+        fprintf(distall_out, "# dprob: %.6f\n", deltaprob);
+        fprintf(distall_out, "# maxcl: %d\n", maxnbclust);
+        fprintf(distall_out, "# maxim: %ld\n", maxnbfr);
+        fprintf(distall_out, "# filename: %s\n", fits_filename);
+        if (user_outdir) fprintf(distall_out, "# outdir: %s\n", user_outdir);
+        fprintf(distall_out, "# scandist_mode: %d\n", scandist_mode);
+        fprintf(distall_out, "# auto_rlim_mode: %d\n", auto_rlim_mode);
+        fprintf(distall_out, "# Columns: Frame1_ID Frame2_ID Distance Ratio(D/rlim) Cluster_ID Cluster_Prob\n");
+    }
+
     if (!scandist_mode) {
         signal(SIGINT, handle_sigint);
         printf("CTRL+C to stop clustering and write results\n");
@@ -282,7 +327,7 @@ int main(int argc, char *argv[]) {
             Frame *curr = getframe();
             if (!curr) break;
 
-            distances[count++] = get_dist(prev, curr);
+            distances[count++] = get_dist(prev, curr, -1, -1.0);
 
             free_frame(prev);
             prev = curr;
@@ -368,28 +413,6 @@ int main(int argc, char *argv[]) {
     if (actual_frames > maxnbfr) actual_frames = maxnbfr;
     assignments = (int *)malloc(actual_frames * sizeof(int));
 
-    // Create output directory
-    char *out_dir = NULL;
-    if (user_outdir) {
-        out_dir = strdup(user_outdir);
-    } else {
-        out_dir = create_output_dir_name(fits_filename);
-    }
-
-    if (!out_dir) {
-        perror("Memory allocation failed for output directory name");
-        return 1;
-    }
-
-    struct stat st = {0};
-    if (stat(out_dir, &st) == -1) {
-        if (mkdir(out_dir, 0777) != 0) {
-            perror("Failed to create output directory");
-            free(out_dir);
-            return 1;
-        }
-    }
-
     char out_path[1024];
     snprintf(out_path, sizeof(out_path), "%s/frame_membership.txt", out_dir);
 
@@ -398,19 +421,6 @@ int main(int argc, char *argv[]) {
         perror("Failed to open frame_membership.txt in output directory");
         free(out_dir);
         return 1;
-    }
-
-    if (distall_mode) {
-        snprintf(out_path, sizeof(out_path), "%s/distall.txt", out_dir);
-        distall_out = fopen(out_path, "w");
-        if (!distall_out) {
-            perror("Failed to open distall.txt in output directory");
-            // Not critical? Or should we exit? Let's warn and continue or exit.
-            // Exit is safer.
-            fclose(ascii_out);
-            free(out_dir);
-            return 1;
-        }
     }
 
     struct timespec start, end;
@@ -481,7 +491,7 @@ int main(int argc, char *argv[]) {
                  int cj = probsortedclindex[k];
 
                  // Step 4: Compute distance
-                 double dfc = get_dist(current_frame, &clusters[cj].anchor);
+                 double dfc = get_dist(current_frame, &clusters[cj].anchor, clusters[cj].id, clusters[cj].prob);
 
                  if (dfc < rlim) {
                      // Allocate to this cluster
@@ -499,7 +509,7 @@ int main(int argc, char *argv[]) {
                      double dcc = dccarray[cj * maxnbclust + cl];
                      if (dcc < 0) {
                         // Should not happen if we update dcc properly
-                        dcc = get_dist(&clusters[cj].anchor, &clusters[cl].anchor);
+                        dcc = get_dist(&clusters[cj].anchor, &clusters[cl].anchor, -1, -1.0);
                         dccarray[cj * maxnbclust + cl] = dcc;
                         dccarray[cl * maxnbclust + cj] = dcc;
                      }
@@ -525,7 +535,7 @@ int main(int argc, char *argv[]) {
 
                     // Update dccarray for new cluster
                     for (int i = 0; i < num_clusters; i++) {
-                        double d = get_dist(&clusters[num_clusters].anchor, &clusters[i].anchor);
+                        double d = get_dist(&clusters[num_clusters].anchor, &clusters[i].anchor, -1, -1.0);
                         dccarray[num_clusters * maxnbclust + i] = d;
                         dccarray[i * maxnbclust + num_clusters] = d;
                     }
