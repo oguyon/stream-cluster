@@ -562,7 +562,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (verbose_level >= 2) {
-            printf("\n  [VV] Processing Frame %ld\n", total_frames_processed);
+            printf("\n  [VV] Processing Frame %ld (Clusters: %d)\n", total_frames_processed, num_clusters);
         }
 
         int assigned_cluster = -1;
