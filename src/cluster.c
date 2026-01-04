@@ -41,6 +41,7 @@ int progress_mode = 0;
 int average_mode = 0;
 int distall_mode = 0;
 int gprob_mode = 0;
+int verbose_level = 0;
 double fmatch_a = 2.0;
 double fmatch_b = 0.5;
 volatile sig_atomic_t stop_requested = 0;
@@ -177,6 +178,8 @@ void print_usage(char *progname) {
     printf("  -gprob         Use geometrical probability for cluster ranking\n");
     printf("  -fmatcha <val> Set parameter 'a' for fmatch (default 2.0)\n");
     printf("  -fmatchb <val> Set parameter 'b' for fmatch (default 0.5)\n");
+    printf("  -verbose       Enable verbose output\n");
+    printf("  -veryverbose   Enable very verbose output (includes fmatch/gprob details)\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -259,6 +262,10 @@ int main(int argc, char *argv[]) {
             progress_mode = 1;
         } else if (strcmp(argv[arg_idx], "-gprob") == 0) {
             gprob_mode = 1;
+        } else if (strcmp(argv[arg_idx], "-verbose") == 0) {
+            verbose_level = 1;
+        } else if (strcmp(argv[arg_idx], "-veryverbose") == 0) {
+            verbose_level = 2;
         } else if (strcmp(argv[arg_idx], "-fmatcha") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -fmatcha\n");
@@ -647,6 +654,15 @@ int main(int argc, char *argv[]) {
                      if (dist_k >= 0) {
                          double dr = fabs(dfc - dist_k) / rlim;
                          double val = fmatch(dr);
+
+                         if (verbose_level >= 2) {
+                             printf("  [VV] Frame %ld vs Frame %d (Cluster %d): dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
+                                    total_frames_processed, k_idx, cj, dr, val,
+                                    frame_infos[k_idx].assignment,
+                                    current_gprobs[frame_infos[k_idx].assignment],
+                                    current_gprobs[frame_infos[k_idx].assignment] * val);
+                         }
+
                          current_gprobs[frame_infos[k_idx].assignment] *= val;
                      }
                  }
