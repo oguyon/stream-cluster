@@ -9,6 +9,7 @@
 #include <signal.h>
 
 #include "common.h"
+#include <math.h>
 
 #define ANSI_COLOR_ORANGE  "\x1b[38;5;208m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -39,10 +40,43 @@ int scandist_mode = 0;
 int progress_mode = 0;
 int average_mode = 0;
 int distall_mode = 0;
+int gprob_mode = 0;
+double fmatch_a = 2.0;
+double fmatch_b = 0.5;
 volatile sig_atomic_t stop_requested = 0;
 FILE *distall_out = NULL;
 
+typedef struct {
+    int *frames;
+    int count;
+    int capacity;
+} VisitorList;
+
+// Helper functions for VisitorList
+void add_visitor(VisitorList *list, int frame_idx) {
+    if (list->count >= list->capacity) {
+        int new_capacity = (list->capacity == 0) ? 16 : list->capacity * 2;
+        int *new_frames = (int *)realloc(list->frames, new_capacity * sizeof(int));
+        if (new_frames) {
+            list->frames = new_frames;
+            list->capacity = new_capacity;
+        } else {
+            perror("Failed to realloc visitor list");
+            return;
+        }
+    }
+    list->frames[list->count++] = frame_idx;
+}
+
+// Function to compute fmatch
+double fmatch(double dr) {
+    if (dr > 2.0) return 0.0;
+    return fmatch_a - (fmatch_a - fmatch_b) * dr / 2.0;
+}
+
 Cluster *clusters;
+VisitorList *cluster_visitors;
+double *current_gprobs;
 double *dccarray; // 1D array simulating 2D: [i*maxNcl + j]
 int *probsortedclindex;
 int *clmembflag;
@@ -56,12 +90,12 @@ FrameInfo *frame_infos = NULL;
 long total_frames_processed = 0;
 
 // Wrapper for framedist to count calls
-double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob) {
+double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob, double current_gprob) {
     framedist_calls++;
     double d = framedist(a, b);
     if (distall_mode && distall_out) {
         double ratio = (rlim > 0.0) ? d / rlim : -1.0;
-        fprintf(distall_out, "%-8d %-8d %-12.6f %-12.6f %-8d %-12.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob);
+        fprintf(distall_out, "%-8d %-8d %-12.6f %-12.6f %-8d %-12.6f %-12.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob, current_gprob);
     }
     return d;
 }
@@ -140,6 +174,9 @@ void print_usage(char *progname) {
     printf("  -outdir <name> Specify output directory name\n");
     printf("  -progress      Print real-time progress updates\n");
     printf("  -scandist      Measure distance between consecutive frames\n");
+    printf("  -gprob         Use geometrical probability for cluster ranking\n");
+    printf("  -fmatcha <val> Set parameter 'a' for fmatch (default 2.0)\n");
+    printf("  -fmatchb <val> Set parameter 'b' for fmatch (default 0.5)\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -220,6 +257,20 @@ int main(int argc, char *argv[]) {
             user_outdir = argv[++arg_idx];
         } else if (strcmp(argv[arg_idx], "-progress") == 0) {
             progress_mode = 1;
+        } else if (strcmp(argv[arg_idx], "-gprob") == 0) {
+            gprob_mode = 1;
+        } else if (strcmp(argv[arg_idx], "-fmatcha") == 0) {
+            if (arg_idx + 1 >= argc) {
+                fprintf(stderr, "Error: Missing value for option -fmatcha\n");
+                return 1;
+            }
+            fmatch_a = atof(argv[++arg_idx]);
+        } else if (strcmp(argv[arg_idx], "-fmatchb") == 0) {
+            if (arg_idx + 1 >= argc) {
+                fprintf(stderr, "Error: Missing value for option -fmatchb\n");
+                return 1;
+            }
+            fmatch_b = atof(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
             // Already handled in first pass, just consume
         } else if (argv[arg_idx][0] == '-') {
@@ -288,7 +339,7 @@ int main(int argc, char *argv[]) {
         if (user_outdir) fprintf(distall_out, "# outdir: %s\n", user_outdir);
         fprintf(distall_out, "# scandist_mode: %d\n", scandist_mode);
         fprintf(distall_out, "# auto_rlim_mode: %d\n", auto_rlim_mode);
-        fprintf(distall_out, "# Columns: Frame1_ID Frame2_ID Distance Ratio(D/rlim) Cluster_ID Cluster_Prob\n");
+        fprintf(distall_out, "# Columns: Frame1_ID Frame2_ID Distance Ratio(D/rlim) Cluster_ID Cluster_Prob GProb\n");
     }
 
     if (!scandist_mode) {
@@ -433,6 +484,10 @@ int main(int argc, char *argv[]) {
     dccarray = (double *)malloc(maxnbclust * maxnbclust * sizeof(double));
     for (int i = 0; i < maxnbclust * maxnbclust; i++) dccarray[i] = -1.0;
 
+    // Allocate gprob structures
+    current_gprobs = (double *)malloc(maxnbclust * sizeof(double));
+    cluster_visitors = (VisitorList *)calloc(maxnbclust, sizeof(VisitorList));
+
     probsortedclindex = (int *)malloc(maxnbclust * sizeof(int));
     clmembflag = (int *)malloc(maxnbclust * sizeof(int));
 
@@ -516,20 +571,54 @@ int main(int argc, char *argv[]) {
                 for (int i = 0; i < num_clusters; i++) clusters[i].prob /= sum_prob;
             }
 
-            // Step 2: Update sorted index
-            for (int i = 0; i < num_clusters; i++) probsortedclindex[i] = i;
-            qsort(probsortedclindex, num_clusters, sizeof(int), compare_probs);
+            // Initialize gprobs for this frame
+            for (int i = 0; i < num_clusters; i++) current_gprobs[i] = 1.0;
 
-            // Step 3: Initialize k=0, clmembflag=1
-            int k = 0;
+            // Step 2: Update sorted index or prepare for loop
             for (int i = 0; i < num_clusters; i++) clmembflag[i] = 1;
 
+            // If NOT in gprob_mode, we use the standard qsort approach.
+            // If in gprob_mode, we will dynamically select the next cluster.
+            if (!gprob_mode) {
+                for (int i = 0; i < num_clusters; i++) probsortedclindex[i] = i;
+                qsort(probsortedclindex, num_clusters, sizeof(int), compare_probs);
+            }
+
+            // Step 3: Initialize k=0
+            int k = 0;
             int found = 0;
-            while (k < num_clusters) {
-                 int cj = probsortedclindex[k];
+
+            // Loop while we have candidates
+            // In standard mode, we iterate k < num_clusters using probsortedclindex.
+            // In gprob mode, we iterate until no more candidates or found.
+            // We can unify loop structure or branch.
+
+            while (1) {
+                 int cj = -1;
+
+                 if (!gprob_mode) {
+                     while (k < num_clusters && clmembflag[probsortedclindex[k]] == 0) k++;
+                     if (k >= num_clusters) break;
+                     cj = probsortedclindex[k];
+                     k++; // Advance for next iteration
+                 } else {
+                     // Find best candidate among unpruned clusters
+                     double max_p = -1.0;
+                     cj = -1;
+                     for (int i = 0; i < num_clusters; i++) {
+                         if (clmembflag[i]) {
+                             double p = clusters[i].prob * current_gprobs[i];
+                             if (p > max_p) {
+                                 max_p = p;
+                                 cj = i;
+                             }
+                         }
+                     }
+                     if (cj == -1) break; // No candidates left
+                 }
 
                  // Step 4: Compute distance
-                 double dfc = get_dist(current_frame, &clusters[cj].anchor, clusters[cj].id, clusters[cj].prob);
+                 double dfc = get_dist(current_frame, &clusters[cj].anchor, clusters[cj].id, clusters[cj].prob, current_gprobs[cj]);
 
                  // Store distance
                  if (temp_count < maxnbclust) {
@@ -537,6 +626,33 @@ int main(int argc, char *argv[]) {
                      temp_dists[temp_count] = dfc;
                      temp_count++;
                  }
+
+                 // Update gprobs
+                 // For each frame k that visited cluster cj
+                 for (int i = 0; i < cluster_visitors[cj].count; i++) {
+                     int k_idx = cluster_visitors[cj].frames[i];
+                     // Find the distance that frame k computed to cluster cj
+                     // This requires searching frame_infos[k_idx].cluster_indices
+                     // Optimisation: if we stored distance in visitor list it would be faster.
+                     // But for now, search. FrameInfo stores limited number of dists.
+
+                     double dist_k = -1.0;
+                     for (int d_idx = 0; d_idx < frame_infos[k_idx].num_dists; d_idx++) {
+                         if (frame_infos[k_idx].cluster_indices[d_idx] == cj) {
+                             dist_k = frame_infos[k_idx].distances[d_idx];
+                             break;
+                         }
+                     }
+
+                     if (dist_k >= 0) {
+                         double dr = fabs(dfc - dist_k) / rlim;
+                         double val = fmatch(dr);
+                         current_gprobs[frame_infos[k_idx].assignment] *= val;
+                     }
+                 }
+
+                 // Add current frame to visitors of cj
+                 add_visitor(&cluster_visitors[cj], total_frames_processed);
 
                  if (dfc < rlim) {
                      // Allocate to this cluster
@@ -554,7 +670,7 @@ int main(int argc, char *argv[]) {
                      double dcc = dccarray[cj * maxnbclust + cl];
                      if (dcc < 0) {
                         // Should not happen if we update dcc properly
-                        dcc = get_dist(&clusters[cj].anchor, &clusters[cl].anchor, -1, -1.0);
+                        dcc = get_dist(&clusters[cj].anchor, &clusters[cl].anchor, -1, -1.0, -1.0);
                         dccarray[cj * maxnbclust + cl] = dcc;
                         dccarray[cl * maxnbclust + cj] = dcc;
                      }
@@ -563,11 +679,7 @@ int main(int argc, char *argv[]) {
                      if (dfc - dcc > rlim) { clmembflag[cl] = 0; clusters_pruned++; }
                  }
 
-                 // Step 6: Increment k
-                 k++;
-                 while (k < num_clusters && clmembflag[probsortedclindex[k]] == 0) {
-                     k++;
-                 }
+                 // Step 6: Handled by loop logic (pruning is done above)
             }
 
             if (!found) {
@@ -580,7 +692,7 @@ int main(int argc, char *argv[]) {
 
                     // Update dccarray for new cluster
                     for (int i = 0; i < num_clusters; i++) {
-                        double d = get_dist(&clusters[num_clusters].anchor, &clusters[i].anchor, -1, -1.0);
+                        double d = get_dist(&clusters[num_clusters].anchor, &clusters[i].anchor, -1, -1.0, -1.0);
                         dccarray[num_clusters * maxnbclust + i] = d;
                         dccarray[i * maxnbclust + num_clusters] = d;
                     }
@@ -786,6 +898,12 @@ int main(int argc, char *argv[]) {
     free(frame_infos);
     free(temp_indices);
     free(temp_dists);
+
+    for (int i = 0; i < maxnbclust; i++) {
+        if (cluster_visitors[i].frames) free(cluster_visitors[i].frames);
+    }
+    free(cluster_visitors);
+    free(current_gprobs);
 
     free(dccarray);
     free(probsortedclindex);
