@@ -1,8 +1,17 @@
-# Stream Cluster
+# High-speed distance-based clustering
 
 **Fast Image Clustering**
 
 A high-speed image clustering tool written in C, optimized for performance. It groups frames (images) into clusters based on Euclidean distance.
+High speed is achieved through:
+- **Fixed cluster anchor points**. A cluster is defined by an immovable anchor point, created when a frame cannot be allocated to existing clusters. This is different from BIRCH, where cluster features evolve as frames are added, requiring many recomputations in the input high-dimension space.
+- **Use of inter-cluster distances to quickly eliminate cluster membership options**. Each distance measurement defines a hypercircle, and clusters that do not intersect with this hypercircle are quickly discarded as possible members.
+- **USe of previous distance computations to prioritize which distance to compute next**. The algorithm learns about the underlying geometry as frames are clustered. Recurring patterns (combinations of frame-to-cluster distances are identified and leveraged to update which frame-to-cluster distance should be computed next).
+- **Short-term memory** 
+
+The algorithm is optimized to minimize the number of distance computations, so it is very efficient in high-dimension space where the underlying data geometry/pattern is unknown.
+
+
 
 ## Features
 
