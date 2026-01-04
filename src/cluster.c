@@ -785,8 +785,10 @@ int main(int argc, char *argv[]) {
                              double val = fmatch(dr);
 
                              if (verbose_level >= 2) {
-                                 printf("  [VV] Frame %ld vs Frame %d (Cluster %d): dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
-                                        total_frames_processed, k_idx, cj, dr, val,
+                                 printf("  [VV]   Frame %d also had distance measurement to Cluster %d (Anchor Frame %d). Frame %d cluster membership is %d.\n",
+                                        k_idx, cj, clusters[cj].anchor.id, k_idx, target_cl);
+                                 printf("  [VV]   Frame %ld vs Frame %d: dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
+                                        total_frames_processed, k_idx, dr, val,
                                         target_cl,
                                         current_gprobs[target_cl],
                                         current_gprobs[target_cl] * val);
