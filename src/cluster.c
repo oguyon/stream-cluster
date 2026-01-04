@@ -98,6 +98,9 @@ double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob, double
         double ratio = (rlim > 0.0) ? d / rlim : -1.0;
         fprintf(distall_out, "%-8d %-8d %-12.6f %-12.6f %-8d %-12.6f %-12.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob, current_gprob);
     }
+    if (verbose_level >= 2 && cluster_idx >= 0) {
+        printf("  [VV] Computed distance: Frame %d to Cluster %d = %.6f\n", a->id, cluster_idx, d);
+    }
     return d;
 }
 
@@ -538,6 +541,10 @@ int main(int argc, char *argv[]) {
             break;
         }
 
+        if (verbose_level >= 2) {
+            printf("  [VV] Processing Frame %ld\n", total_frames_processed);
+        }
+
         int assigned_cluster = -1;
         int temp_count = 0;
 
@@ -578,6 +585,10 @@ int main(int argc, char *argv[]) {
             temp_indices[0] = 0;
             temp_dists[0] = 0.0;
             temp_count = 1;
+
+            if (verbose_level >= 2) {
+                printf("  [VV] Frame %ld created initial Cluster 0\n", total_frames_processed);
+            }
 
         } else {
             // Step 1: Normalize probabilities
@@ -644,35 +655,37 @@ int main(int argc, char *argv[]) {
                  }
 
                  // Update gprobs
-                 // For each frame k that visited cluster cj
-                 for (int i = 0; i < cluster_visitors[cj].count; i++) {
-                     int k_idx = cluster_visitors[cj].frames[i];
-                     // Find the distance that frame k computed to cluster cj
-                     // This requires searching frame_infos[k_idx].cluster_indices
-                     // Optimisation: if we stored distance in visitor list it would be faster.
-                     // But for now, search. FrameInfo stores limited number of dists.
+                 if (gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) {
+                     // For each frame k that visited cluster cj
+                     for (int i = 0; i < cluster_visitors[cj].count; i++) {
+                         int k_idx = cluster_visitors[cj].frames[i];
+                         // Find the distance that frame k computed to cluster cj
+                         // This requires searching frame_infos[k_idx].cluster_indices
+                         // Optimisation: if we stored distance in visitor list it would be faster.
+                         // But for now, search. FrameInfo stores limited number of dists.
 
-                     double dist_k = -1.0;
-                     for (int d_idx = 0; d_idx < frame_infos[k_idx].num_dists; d_idx++) {
-                         if (frame_infos[k_idx].cluster_indices[d_idx] == cj) {
-                             dist_k = frame_infos[k_idx].distances[d_idx];
-                             break;
-                         }
-                     }
-
-                     if (dist_k >= 0) {
-                         double dr = fabs(dfc - dist_k) / rlim;
-                         double val = fmatch(dr);
-
-                         if (verbose_level >= 2) {
-                             printf("  [VV] Frame %ld vs Frame %d (Cluster %d): dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
-                                    total_frames_processed, k_idx, cj, dr, val,
-                                    frame_infos[k_idx].assignment,
-                                    current_gprobs[frame_infos[k_idx].assignment],
-                                    current_gprobs[frame_infos[k_idx].assignment] * val);
+                         double dist_k = -1.0;
+                         for (int d_idx = 0; d_idx < frame_infos[k_idx].num_dists; d_idx++) {
+                             if (frame_infos[k_idx].cluster_indices[d_idx] == cj) {
+                                 dist_k = frame_infos[k_idx].distances[d_idx];
+                                 break;
+                             }
                          }
 
-                         current_gprobs[frame_infos[k_idx].assignment] *= val;
+                         if (dist_k >= 0) {
+                             double dr = fabs(dfc - dist_k) / rlim;
+                             double val = fmatch(dr);
+
+                             if (verbose_level >= 2) {
+                                 printf("  [VV] Frame %ld vs Frame %d (Cluster %d): dr=%.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
+                                        total_frames_processed, k_idx, cj, dr, val,
+                                        frame_infos[k_idx].assignment,
+                                        current_gprobs[frame_infos[k_idx].assignment],
+                                        current_gprobs[frame_infos[k_idx].assignment] * val);
+                             }
+
+                             current_gprobs[frame_infos[k_idx].assignment] *= val;
+                         }
                      }
                  }
 
@@ -684,6 +697,9 @@ int main(int argc, char *argv[]) {
                      assigned_cluster = cj;
                      clusters[cj].prob += deltaprob;
                      found = 1;
+                     if (verbose_level >= 2) {
+                         printf("  [VV] Frame %ld assigned to Cluster %d\n", total_frames_processed, assigned_cluster);
+                     }
                      break;
                  }
 
@@ -735,6 +751,20 @@ int main(int argc, char *argv[]) {
                         dccarray[i * maxnbclust + num_clusters] = d;
                     }
                     dccarray[num_clusters * maxnbclust + num_clusters] = 0.0;
+
+                    if (verbose_level >= 2) {
+                        printf("  [VV] Frame %ld created new Cluster %d\n", total_frames_processed, num_clusters);
+                    }
+
+                    // Add current frame as visitor to the new cluster
+                    add_visitor(&cluster_visitors[num_clusters], total_frames_processed);
+
+                    // Add new cluster distance (0.0) to temp buffers for recording in frame_infos
+                    if (temp_count < maxnbclust) {
+                        temp_indices[temp_count] = num_clusters;
+                        temp_dists[temp_count] = 0.0;
+                        temp_count++;
+                    }
 
                     num_clusters++;
                     free(current_frame); // Structure only
