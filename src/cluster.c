@@ -52,6 +52,7 @@ long clusters_pruned = 0;
 
 // Assignments for output
 int *assignments = NULL;
+FrameInfo *frame_infos = NULL;
 long total_frames_processed = 0;
 
 // Wrapper for framedist to count calls
@@ -60,7 +61,7 @@ double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob) {
     double d = framedist(a, b);
     if (distall_mode && distall_out) {
         double ratio = (rlim > 0.0) ? d / rlim : -1.0;
-        fprintf(distall_out, "%d %d %.6f %.6f %d %.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob);
+        fprintf(distall_out, "%-8d %-8d %-12.6f %-12.6f %-8d %-12.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob);
     }
     return d;
 }
@@ -321,18 +322,45 @@ int main(int argc, char *argv[]) {
              return 1;
         }
 
+        FILE *scan_out = NULL;
+        char scan_path[1024];
+        snprintf(scan_path, sizeof(scan_path), "%s/dist-scan.txt", out_dir);
+        scan_out = fopen(scan_path, "w");
+        if (scan_out) {
+             fprintf(scan_out, "# Frame1 Frame2 Distance\n");
+        } else {
+             perror("Failed to open dist-scan.txt");
+        }
+
+        printf("Scanning distances\n");
+
         long count = 0;
         // Loop from 1 to process_limit-1
         for (long i = 1; i < process_limit; i++) {
             Frame *curr = getframe();
             if (!curr) break;
 
-            distances[count++] = get_dist(prev, curr, -1, -1.0);
+            // Manual calculation to avoid writing to distall.txt via get_dist
+            // But we want to write to dist-scan.txt
+            framedist_calls++;
+            double d = framedist(prev, curr);
+            distances[count++] = d;
+
+            if (scan_out) {
+                fprintf(scan_out, "%d %d %.6f\n", prev->id, curr->id, d);
+            }
+
+            if (progress_mode && (i % 10 == 0 || i == process_limit - 1)) {
+                printf("\rScanning frame %ld / %ld", i, process_limit);
+                fflush(stdout);
+            }
 
             free_frame(prev);
             prev = curr;
         }
         free_frame(prev); // Free the last one
+        if (scan_out) fclose(scan_out);
+        if (progress_mode) printf("\n");
 
         if (count > 0) {
             qsort(distances, count, sizeof(double), compare_doubles);
@@ -412,6 +440,15 @@ int main(int argc, char *argv[]) {
     long actual_frames = get_num_frames();
     if (actual_frames > maxnbfr) actual_frames = maxnbfr;
     assignments = (int *)malloc(actual_frames * sizeof(int));
+    frame_infos = (FrameInfo *)calloc(actual_frames, sizeof(FrameInfo));
+
+    // Temp buffers for distance collection per frame
+    int *temp_indices = (int *)malloc(maxnbclust * sizeof(int));
+    double *temp_dists = (double *)malloc(maxnbclust * sizeof(double));
+    if (!temp_indices || !temp_dists) {
+        perror("Memory allocation failed for temp buffers");
+        return 1;
+    }
 
     char out_path[1024];
     snprintf(out_path, sizeof(out_path), "%s/frame_membership.txt", out_dir);
@@ -440,6 +477,7 @@ int main(int argc, char *argv[]) {
         }
 
         int assigned_cluster = -1;
+        int temp_count = 0;
 
         if (num_clusters == 0) {
             // Step 0
@@ -492,6 +530,13 @@ int main(int argc, char *argv[]) {
 
                  // Step 4: Compute distance
                  double dfc = get_dist(current_frame, &clusters[cj].anchor, clusters[cj].id, clusters[cj].prob);
+
+                 // Store distance
+                 if (temp_count < maxnbclust) {
+                     temp_indices[temp_count] = cj;
+                     temp_dists[temp_count] = dfc;
+                     temp_count++;
+                 }
 
                  if (dfc < rlim) {
                      // Allocate to this cluster
@@ -562,6 +607,23 @@ int main(int argc, char *argv[]) {
         // Record assignment
         assignments[total_frames_processed] = assigned_cluster;
         fprintf(ascii_out, "%ld %d\n", total_frames_processed, assigned_cluster);
+
+        // Store FrameInfo
+        frame_infos[total_frames_processed].assignment = assigned_cluster;
+        frame_infos[total_frames_processed].num_dists = temp_count;
+        if (temp_count > 0) {
+            frame_infos[total_frames_processed].cluster_indices = (int *)malloc(temp_count * sizeof(int));
+            frame_infos[total_frames_processed].distances = (double *)malloc(temp_count * sizeof(double));
+            if (frame_infos[total_frames_processed].cluster_indices && frame_infos[total_frames_processed].distances) {
+                memcpy(frame_infos[total_frames_processed].cluster_indices, temp_indices, temp_count * sizeof(int));
+                memcpy(frame_infos[total_frames_processed].distances, temp_dists, temp_count * sizeof(double));
+            } else {
+                perror("Memory allocation failed for FrameInfo arrays");
+            }
+        } else {
+            frame_infos[total_frames_processed].cluster_indices = NULL;
+            frame_infos[total_frames_processed].distances = NULL;
+        }
 
         total_frames_processed++;
 
@@ -716,6 +778,15 @@ int main(int argc, char *argv[]) {
         if (clusters[i].anchor.data) free(clusters[i].anchor.data);
     }
     free(clusters);
+    // Free FrameInfo
+    for (long i = 0; i < total_frames_processed; i++) {
+        if (frame_infos[i].cluster_indices) free(frame_infos[i].cluster_indices);
+        if (frame_infos[i].distances) free(frame_infos[i].distances);
+    }
+    free(frame_infos);
+    free(temp_indices);
+    free(temp_dists);
+
     free(dccarray);
     free(probsortedclindex);
     free(clmembflag);
