@@ -744,7 +744,13 @@ int main(int argc, char *argv[]) {
                  }
 
                  // Update gprobs
-                 if (gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) {
+                 // Count active clusters to skip redundant updates if only one candidate remains
+                 int active_cluster_count = 0;
+                 for (int i = 0; i < num_clusters; i++) {
+                     if (clmembflag[i]) active_cluster_count++;
+                 }
+
+                 if ((gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) && active_cluster_count > 1) {
                      int match_count = cluster_visitors[cj].count;
                      if (match_count > 0) match_count--; // Exclude current frame which was just added
 
