@@ -13,6 +13,7 @@
 
 #define ANSI_COLOR_ORANGE  "\x1b[38;5;208m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 // Prototype declarations
@@ -99,7 +100,7 @@ double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob, double
         fprintf(distall_out, "%-8d %-8d %-12.6f %-12.6f %-8d %-12.6f %-12.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob, current_gprob);
     }
     if (verbose_level >= 2 && cluster_idx >= 0) {
-        printf("  [VV] Computed distance: Frame %d to Cluster %d = %.6f\n", a->id, cluster_idx, d);
+        printf(ANSI_COLOR_BLUE "  [VV] Computed distance: Frame %d to Cluster %d = %.6f\n" ANSI_COLOR_RESET, a->id, cluster_idx, d);
     }
     return d;
 }
@@ -587,7 +588,7 @@ int main(int argc, char *argv[]) {
             temp_count = 1;
 
             if (verbose_level >= 2) {
-                printf("  [VV] Frame %ld created initial Cluster 0\n", total_frames_processed);
+                printf(ANSI_COLOR_ORANGE "  [VV] Frame %ld created initial Cluster 0\n" ANSI_COLOR_RESET, total_frames_processed);
             }
 
         } else {
@@ -698,7 +699,7 @@ int main(int argc, char *argv[]) {
                      clusters[cj].prob += deltaprob;
                      found = 1;
                      if (verbose_level >= 2) {
-                         printf("  [VV] Frame %ld assigned to Cluster %d\n", total_frames_processed, assigned_cluster);
+                         printf(ANSI_COLOR_GREEN "  [VV] Frame %ld assigned to Cluster %d\n" ANSI_COLOR_RESET, total_frames_processed, assigned_cluster);
                      }
                      break;
                  }
@@ -753,7 +754,7 @@ int main(int argc, char *argv[]) {
                     dccarray[num_clusters * maxnbclust + num_clusters] = 0.0;
 
                     if (verbose_level >= 2) {
-                        printf("  [VV] Frame %ld created new Cluster %d\n", total_frames_processed, num_clusters);
+                        printf(ANSI_COLOR_ORANGE "  [VV] Frame %ld created new Cluster %d\n" ANSI_COLOR_RESET, total_frames_processed, num_clusters);
                     }
 
                     // Add current frame as visitor to the new cluster
