@@ -749,6 +749,9 @@ int main(int argc, char *argv[]) {
                      for (int i = 0; i < cluster_visitors[cj].count; i++) {
                          int k_idx = cluster_visitors[cj].frames[i];
 
+                         // Skip current frame as it's not fully initialized in frame_infos yet
+                         if (k_idx == total_frames_processed) continue;
+
                          int target_cl = frame_infos[k_idx].assignment;
                          if (clmembflag[target_cl] == 0) continue;
 
