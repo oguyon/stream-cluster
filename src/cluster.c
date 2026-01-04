@@ -745,6 +745,13 @@ int main(int argc, char *argv[]) {
 
                  // Update gprobs
                  if (gprob_mode || (distall_mode && distall_out) || verbose_level >= 2) {
+                     int match_count = cluster_visitors[cj].count;
+                     if (match_count > 0) match_count--; // Exclude current frame which was just added
+
+                     if (verbose_level >= 2) {
+                         printf("  [VV] Distance > rlim. Found %d matches in distinfo for Cluster %d.\n", match_count, cj);
+                     }
+
                      // For each frame k that visited cluster cj
                      for (int i = 0; i < cluster_visitors[cj].count; i++) {
                          int k_idx = cluster_visitors[cj].frames[i];
@@ -753,7 +760,12 @@ int main(int argc, char *argv[]) {
                          if (k_idx == total_frames_processed) continue;
 
                          int target_cl = frame_infos[k_idx].assignment;
-                         if (clmembflag[target_cl] == 0) continue;
+                         if (clmembflag[target_cl] == 0) {
+                             if (verbose_level >= 2) {
+                                 printf("  [VV]   Skipping match with Frame %d (Cluster %d is pruned).\n", k_idx, target_cl);
+                             }
+                             continue;
+                         }
 
                          // Find the distance that frame k computed to cluster cj
                          // This requires searching frame_infos[k_idx].cluster_indices
