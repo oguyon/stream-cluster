@@ -16,4 +16,11 @@ typedef struct {
     double prob;
 } Cluster;
 
+typedef struct {
+    int assignment;
+    int num_dists;
+    int *cluster_indices;
+    double *distances;
+} FrameInfo;
+
 #endif // COMMON_H
