@@ -113,7 +113,7 @@ double get_dist(Frame *a, Frame *b, int cluster_idx, double cluster_prob, double
         fprintf(distall_out, "%-8d %-8d %-12.6f %-12.6f %-8d %-12.6f %-12.6f\n", a->id, b->id, d, ratio, cluster_idx, cluster_prob, current_gprob);
     }
     if (verbose_level >= 2 && cluster_idx >= 0) {
-        printf(ANSI_COLOR_BLUE "  [VV] Computed distance: Frame %d to Cluster %d = %.6f\n" ANSI_COLOR_RESET, a->id, cluster_idx, d);
+        printf(ANSI_COLOR_BLUE "  [VV] Computed distance: Frame %5d to Cluster %4d = %12.5e\n" ANSI_COLOR_RESET, a->id, cluster_idx, d);
     }
     return d;
 }
@@ -562,7 +562,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (verbose_level >= 2) {
-            printf("\n  [VV] Processing Frame %ld (Clusters: %d)\n", total_frames_processed, num_clusters);
+            printf("\n  [VV] Processing Frame %5ld (Clusters: %4d)\n", total_frames_processed, num_clusters);
         }
 
         int assigned_cluster = -1;
@@ -607,7 +607,7 @@ int main(int argc, char *argv[]) {
             temp_count = 1;
 
             if (verbose_level >= 2) {
-                printf(ANSI_COLOR_ORANGE "  [VV] Frame %ld created initial Cluster 0\n" ANSI_COLOR_RESET, total_frames_processed);
+                printf(ANSI_COLOR_ORANGE "  [VV] Frame %5ld created initial Cluster    0\n" ANSI_COLOR_RESET, total_frames_processed);
             }
 
         } else {
@@ -659,7 +659,7 @@ int main(int argc, char *argv[]) {
                          qsort(verbose_candidates, vcount, sizeof(Candidate), compare_candidates);
                          printf("  [VV] Cluster ranking:");
                          for (int i = 0; i < vcount; i++) {
-                             printf(" [%d %.6f]", verbose_candidates[i].id, verbose_candidates[i].p);
+                             printf(" [%4d %12.5e]", verbose_candidates[i].id, verbose_candidates[i].p);
                              if (i < vcount - 1) printf(" >");
                          }
                          printf("\n");
@@ -755,7 +755,7 @@ int main(int argc, char *argv[]) {
                      if (match_count > 0) match_count--; // Exclude current frame which was just added
 
                      if (verbose_level >= 2) {
-                         printf("  [VV] Distance > rlim. Found %d matches in distinfo for Cluster %d (Frame %d).\n", match_count, cj, clusters[cj].anchor.id);
+                         printf("  [VV] Distance > rlim. Found %d matches in distinfo for Cluster %4d (Frame %5d).\n", match_count, cj, clusters[cj].anchor.id);
                      }
 
                      // For each frame k that visited cluster cj
@@ -785,9 +785,9 @@ int main(int argc, char *argv[]) {
                              double val = fmatch(dr);
 
                              if (verbose_level >= 2) {
-                                 printf("  [VV]   Frame %d also had distance measurement to Cluster %d (Anchor Frame %d). Frame %d cluster membership is %d.\n",
+                                 printf("  [VV]   Frame %5d also had distance measurement to Cluster %4d (Anchor Frame %5d). Frame %5d cluster membership is %4d.\n",
                                         k_idx, cj, clusters[cj].anchor.id, k_idx, target_cl);
-                                 printf("    dist %ld-%d = %.6f  dist %d-%d = %.6f, fmatch=%.6f, updating GProb(Cluster %d) from %.6f to %.6f\n",
+                                 printf("    dist %5ld-%-5d = %12.5e  dist %5d-%-5d = %12.5e, fmatch=%12.5e, updating GProb(Cluster %4d) from %12.5e to %12.5e\n",
                                         total_frames_processed, clusters[cj].anchor.id, dfc,
                                         k_idx, clusters[cj].anchor.id, dist_k,
                                         val,
@@ -821,7 +821,8 @@ int main(int argc, char *argv[]) {
                     dccarray[num_clusters * maxnbclust + num_clusters] = 0.0;
 
                     if (verbose_level >= 2) {
-                        printf(ANSI_COLOR_ORANGE "  [VV] Frame %ld created new Cluster %d\n" ANSI_COLOR_RESET, total_frames_processed, num_clusters);
+                         printf(ANSI_COLOR_GREEN "  [VV] Frame %5ld assigned to Cluster %4d\n" ANSI_COLOR_RESET, total_frames_processed, assigned_cluster);
+                        printf(ANSI_COLOR_ORANGE "  [VV] Frame %5ld created new Cluster %4d\n" ANSI_COLOR_RESET, total_frames_processed, num_clusters);
                     }
 
                     // Add current frame as visitor to the new cluster
