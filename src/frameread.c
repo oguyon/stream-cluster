@@ -17,6 +17,10 @@ static int current_frame_idx = 0;
 
 Frame* getframe_at(long index);
 
+int is_ascii_input_mode() {
+    return is_ascii_mode;
+}
+
 static int init_ascii(char *filename) {
     ascii_ptr = fopen(filename, "r");
     if (!ascii_ptr) {

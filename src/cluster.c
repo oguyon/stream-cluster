@@ -45,6 +45,7 @@ int average_mode = 0;
 int distall_mode = 0;
 int gprob_mode = 0;
 int verbose_level = 0;
+int fitsout_mode = 0;
 double fmatch_a = 2.0;
 double fmatch_b = 0.5;
 volatile sig_atomic_t stop_requested = 0;
@@ -202,6 +203,7 @@ void print_usage(char *progname) {
     printf("  -fmatchb <val> Set parameter 'b' for fmatch (default 0.5)\n");
     printf("  -verbose       Enable verbose output\n");
     printf("  -veryverbose   Enable very verbose output (includes fmatch/gprob details)\n");
+    printf("  -fitsout       Force FITS output format even for ASCII input\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -288,6 +290,8 @@ int main(int argc, char *argv[]) {
             verbose_level = 1;
         } else if (strcmp(argv[arg_idx], "-veryverbose") == 0) {
             verbose_level = 2;
+        } else if (strcmp(argv[arg_idx], "-fitsout") == 0) {
+            fitsout_mode = 1;
         } else if (strcmp(argv[arg_idx], "-fmatcha") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -fmatcha\n");
@@ -935,33 +939,47 @@ int main(int argc, char *argv[]) {
         fclose(dcc_out);
     }
 
-    // Write Anchors FITS
-    int status = 0;
-    fitsfile *afptr;
-    snprintf(out_path, sizeof(out_path), "!%s/anchors.fits", out_dir);
-    fits_create_file(&afptr, out_path, &status);
-    long naxes[3] = { get_frame_width(), get_frame_height(), num_clusters };
-    fits_create_img(afptr, DOUBLE_IMG, 3, naxes, &status);
-
+    // Write Anchors
     long nelements = get_frame_width() * get_frame_height();
-    for (int i = 0; i < num_clusters; i++) {
-        long fpixel[3] = {1, 1, i + 1};
-        fits_write_pix(afptr, TDOUBLE, fpixel, nelements, clusters[i].anchor.data, &status);
+    int status = 0;
+
+    if (is_ascii_input_mode() && !fitsout_mode) {
+        // Write ASCII anchors
+        snprintf(out_path, sizeof(out_path), "%s/anchors.txt", out_dir);
+        FILE *afptr = fopen(out_path, "w");
+        if (afptr) {
+            for (int i = 0; i < num_clusters; i++) {
+                for (long k = 0; k < nelements; k++) {
+                    fprintf(afptr, "%f ", clusters[i].anchor.data[k]);
+                }
+                fprintf(afptr, "\n");
+            }
+            fclose(afptr);
+        } else {
+            perror("Failed to write anchors.txt");
+        }
+    } else {
+        // Write FITS anchors
+        fitsfile *afptr;
+        snprintf(out_path, sizeof(out_path), "!%s/anchors.fits", out_dir);
+        fits_create_file(&afptr, out_path, &status);
+        long naxes[3] = { get_frame_width(), get_frame_height(), num_clusters };
+        fits_create_img(afptr, DOUBLE_IMG, 3, naxes, &status);
+
+        for (int i = 0; i < num_clusters; i++) {
+            long fpixel[3] = {1, 1, i + 1};
+            fits_write_pix(afptr, TDOUBLE, fpixel, nelements, clusters[i].anchor.data, &status);
+        }
+        fits_close_file(afptr, &status);
     }
-    fits_close_file(afptr, &status);
 
-    // Write Cluster FITS cubes and optionally compute average
-    // We need to group frames by cluster to write them effectively
-    // To avoid too many file open/close, we iterate over clusters
-    printf("Writing cluster FITS files...\n");
-
+    // Write Cluster Counts
     int *cluster_counts = (int *)calloc(num_clusters, sizeof(int));
     for (long i = 0; i < total_frames_processed; i++) {
         if (assignments[i] >= 0 && assignments[i] < num_clusters)
             cluster_counts[assignments[i]]++;
     }
 
-    // Write cluster counts
     snprintf(out_path, sizeof(out_path), "%s/cluster_counts.txt", out_dir);
     FILE *count_out = fopen(out_path, "w");
     if (count_out) {
@@ -971,69 +989,174 @@ int main(int argc, char *argv[]) {
         fclose(count_out);
     }
 
-    fitsfile *avg_ptr = NULL;
-    double *avg_buffer = NULL;
-    if (average_mode) {
-        snprintf(out_path, sizeof(out_path), "!%s/average.fits", out_dir);
-        fits_create_file(&avg_ptr, out_path, &status);
-        long anaxes[3] = { get_frame_width(), get_frame_height(), num_clusters };
-        fits_create_img(avg_ptr, DOUBLE_IMG, 3, anaxes, &status);
-        avg_buffer = (double *)calloc(nelements, sizeof(double));
-    }
+    // Write Cluster Files and Average
+    printf("Writing cluster files...\n");
 
-    for (int c = 0; c < num_clusters; c++) {
-        if (cluster_counts[c] == 0) {
-             if (average_mode) {
-                 // Write zeros if empty cluster (unlikely here)
-                 for (long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
-                 long fpixel[3] = {1, 1, c + 1};
-                 fits_write_pix(avg_ptr, TDOUBLE, fpixel, nelements, avg_buffer, &status);
-             }
-             continue;
-        }
-
-        char fname[1024];
-        snprintf(fname, sizeof(fname), "!%s/cluster_%d.fits", out_dir, c);
-
-        fitsfile *cfptr;
-        fits_create_file(&cfptr, fname, &status);
-        long cnaxes[3] = { get_frame_width(), get_frame_height(), cluster_counts[c] };
-        fits_create_img(cfptr, DOUBLE_IMG, 3, cnaxes, &status);
-
+    if (is_ascii_input_mode() && !fitsout_mode) {
+        // ASCII Mode
+        FILE *avg_file = NULL;
+        double *avg_buffer = NULL;
         if (average_mode) {
-             for (long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
+            snprintf(out_path, sizeof(out_path), "%s/average.txt", out_dir);
+            avg_file = fopen(out_path, "w");
+            avg_buffer = (double *)calloc(nelements, sizeof(double));
         }
 
-        // Find frames belonging to this cluster
-        int frame_count_in_cluster = 0;
-        for (long f = 0; f < total_frames_processed; f++) {
-            if (assignments[f] == c) {
-                Frame *fr = getframe_at(f);
-                if (fr) {
-                    long fpixel[3] = {1, 1, frame_count_in_cluster + 1};
-                    fits_write_pix(cfptr, TDOUBLE, fpixel, nelements, fr->data, &status);
+        for (int c = 0; c < num_clusters; c++) {
+            if (cluster_counts[c] == 0) {
+                if (average_mode && avg_file) {
+                    // Empty cluster average line
+                    for (long k=0; k<nelements; k++) fprintf(avg_file, "0.0 ");
+                    fprintf(avg_file, "\n");
+                }
+                continue;
+            }
 
-                    if (average_mode) {
-                        for (long k=0; k<nelements; k++) avg_buffer[k] += fr->data[k];
+            char fname[1024];
+            snprintf(fname, sizeof(fname), "%s/cluster_%d.txt", out_dir, c);
+            FILE *cfptr = fopen(fname, "w");
+            if (!cfptr) {
+                perror("Failed to create cluster txt file");
+                continue;
+            }
+
+            if (average_mode) {
+                for (long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
+            }
+
+            for (long f = 0; f < total_frames_processed; f++) {
+                if (assignments[f] == c) {
+                    Frame *fr = getframe_at(f);
+                    if (fr) {
+                        for (long k = 0; k < nelements; k++) {
+                            fprintf(cfptr, "%f ", fr->data[k]);
+                            if (average_mode) avg_buffer[k] += fr->data[k];
+                        }
+                        fprintf(cfptr, "\n");
+                        free_frame(fr);
                     }
-
-                    free_frame(fr);
-                    frame_count_in_cluster++;
                 }
             }
+            fclose(cfptr);
+
+            if (average_mode && avg_file) {
+                for (long k=0; k<nelements; k++) {
+                    fprintf(avg_file, "%f ", avg_buffer[k] / cluster_counts[c]);
+                }
+                fprintf(avg_file, "\n");
+            }
         }
-        fits_close_file(cfptr, &status);
+        if (average_mode) {
+            if (avg_file) fclose(avg_file);
+            free(avg_buffer);
+        }
+
+        // Create .clustered.txt
+        // Using original file name with new extension .clustered.txt
+        // We need to strip path if outputting to current dir, or use output dir?
+        // "using the original file name with the new extension" usually implies location too,
+        // or just the name. The prompt says "write a copy of the input file... using the original file name...".
+        // It's ambiguous if it should be in the output directory or alongside input.
+        // Given we write other outputs to `out_dir`, maybe write this one there too?
+        // But "using original file name" suggests input location.
+        // Let's assume input location for simplicity or try to put it in out_dir?
+        // Let's assume the user wants it alongside input. But we might not have write permission.
+        // Let's try to construct it based on input filename string.
+
+        char *clustered_fname = (char *)malloc(strlen(fits_filename) + 20);
+        strcpy(clustered_fname, fits_filename);
+        char *ext = strrchr(clustered_fname, '.');
+        if (ext && strcmp(ext, ".txt") == 0) {
+            strcpy(ext, ".clustered.txt");
+        } else {
+            strcat(clustered_fname, ".clustered.txt");
+        }
+
+        FILE *clustered_out = fopen(clustered_fname, "w");
+        if (clustered_out) {
+            for (long i = 0; i < total_frames_processed; i++) {
+                Frame *fr = getframe_at(i);
+                if (fr) {
+                    fprintf(clustered_out, "%d ", assignments[i]);
+                    for (long k = 0; k < nelements; k++) {
+                        fprintf(clustered_out, "%f ", fr->data[k]);
+                    }
+                    fprintf(clustered_out, "\n");
+                    free_frame(fr);
+                }
+            }
+            fclose(clustered_out);
+            printf("Created clustered file: %s\n", clustered_fname);
+        } else {
+            perror("Failed to create clustered output file");
+        }
+        free(clustered_fname);
+
+    } else {
+        // FITS Mode
+        fitsfile *avg_ptr = NULL;
+        double *avg_buffer = NULL;
+        if (average_mode) {
+            snprintf(out_path, sizeof(out_path), "!%s/average.fits", out_dir);
+            fits_create_file(&avg_ptr, out_path, &status);
+            long anaxes[3] = { get_frame_width(), get_frame_height(), num_clusters };
+            fits_create_img(avg_ptr, DOUBLE_IMG, 3, anaxes, &status);
+            avg_buffer = (double *)calloc(nelements, sizeof(double));
+        }
+
+        for (int c = 0; c < num_clusters; c++) {
+            if (cluster_counts[c] == 0) {
+                 if (average_mode) {
+                     for (long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
+                     long fpixel[3] = {1, 1, c + 1};
+                     fits_write_pix(avg_ptr, TDOUBLE, fpixel, nelements, avg_buffer, &status);
+                 }
+                 continue;
+            }
+
+            char fname[1024];
+            snprintf(fname, sizeof(fname), "!%s/cluster_%d.fits", out_dir, c);
+
+            fitsfile *cfptr;
+            fits_create_file(&cfptr, fname, &status);
+            long cnaxes[3] = { get_frame_width(), get_frame_height(), cluster_counts[c] };
+            fits_create_img(cfptr, DOUBLE_IMG, 3, cnaxes, &status);
+
+            if (average_mode) {
+                 for (long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
+            }
+
+            // Find frames belonging to this cluster
+            int frame_count_in_cluster = 0;
+            for (long f = 0; f < total_frames_processed; f++) {
+                if (assignments[f] == c) {
+                    Frame *fr = getframe_at(f);
+                    if (fr) {
+                        long fpixel[3] = {1, 1, frame_count_in_cluster + 1};
+                        fits_write_pix(cfptr, TDOUBLE, fpixel, nelements, fr->data, &status);
+
+                        if (average_mode) {
+                            for (long k=0; k<nelements; k++) avg_buffer[k] += fr->data[k];
+                        }
+
+                        free_frame(fr);
+                        frame_count_in_cluster++;
+                    }
+                }
+            }
+            fits_close_file(cfptr, &status);
+
+            if (average_mode) {
+                for (long k=0; k<nelements; k++) avg_buffer[k] /= cluster_counts[c];
+                long fpixel[3] = {1, 1, c + 1};
+                fits_write_pix(avg_ptr, TDOUBLE, fpixel, nelements, avg_buffer, &status);
+            }
+        }
 
         if (average_mode) {
-            for (long k=0; k<nelements; k++) avg_buffer[k] /= cluster_counts[c];
-            long fpixel[3] = {1, 1, c + 1};
-            fits_write_pix(avg_ptr, TDOUBLE, fpixel, nelements, avg_buffer, &status);
+            free(avg_buffer);
+            fits_close_file(avg_ptr, &status);
         }
-    }
-
-    if (average_mode) {
-        free(avg_buffer);
-        fits_close_file(avg_ptr, &status);
     }
 
     free(cluster_counts);

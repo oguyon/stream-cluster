@@ -14,11 +14,13 @@ typedef enum {
     GEN_RANDOM,
     GEN_CIRCLE,
     GEN_WALK,
-    GEN_SPIRAL
+    GEN_SPIRAL,
+    GEN_SPHERE
 } GenType;
 
 typedef struct {
     GenType type;
+    int dim;      // 2 or 3
     double param; // generic parameter (period, step, loops)
 } GeneratorConfig;
 
@@ -27,101 +29,201 @@ double rand_double() {
     return (double)rand() / (double)RAND_MAX;
 }
 
-// Generate random point in unit circle
-void gen_random(double *x, double *y) {
-    // Rejection sampling or polar coordinates
-    // Polar: r = sqrt(u), theta = 2*pi*v ensures uniform area
-    double r = sqrt(rand_double());
-    double theta = 2.0 * M_PI * rand_double();
-    *x = r * cos(theta);
-    *y = r * sin(theta);
+// Generate random point in unit circle/sphere
+void gen_random(double *x, double *y, double *z, int dim) {
+    if (dim == 3) {
+        double r = cbrt(rand_double());
+        double costheta = 1.0 - 2.0 * rand_double();
+        double phi = 2.0 * M_PI * rand_double();
+        double sintheta = sqrt(1.0 - costheta * costheta);
+        *x = r * sintheta * cos(phi);
+        *y = r * sintheta * sin(phi);
+        *z = r * costheta;
+    } else {
+        double r = sqrt(rand_double());
+        double theta = 2.0 * M_PI * rand_double();
+        *x = r * cos(theta);
+        *y = r * sin(theta);
+        *z = 0.0;
+    }
 }
 
-// Generate circle point
-void gen_circle(double *x, double *y, long index, double period) {
+// Generate random point ON unit circle/sphere
+void gen_sphere(double *x, double *y, double *z, int dim) {
+    if (dim == 3) {
+        double costheta = 1.0 - 2.0 * rand_double();
+        double phi = 2.0 * M_PI * rand_double();
+        double sintheta = sqrt(1.0 - costheta * costheta);
+        *x = sintheta * cos(phi);
+        *y = sintheta * sin(phi);
+        *z = costheta;
+    } else {
+        // 2D sphere is just a circle edge
+        double theta = 2.0 * M_PI * rand_double();
+        *x = cos(theta);
+        *y = sin(theta);
+        *z = 0.0;
+    }
+}
+
+// Generate circle point (2D path)
+void gen_circle(double *x, double *y, double *z, long index, double period, int dim) {
     if (period <= 0.0) period = 1.0;
     double theta = 2.0 * M_PI * index / period;
     *x = cos(theta);
     *y = sin(theta);
+    *z = 0.0;
+    if (dim == 3) {
+        // For 3D circle, maybe a helix or just a circle in xy plane?
+        // "3Dcircle" usually implies a circle in 3D. Let's keep z=0 for now or implement helix if requested.
+        // Prompt asked for "3Dsphere" as comparison. Assuming 2Dcircle means the 2D pattern.
+        // If 3D is requested for circle, maybe we map it?
+        // Let's keep z=0.
+    }
 }
 
 // Generate random walk point
-void gen_walk(double *x, double *y, double step_size) {
-    // Current pos is passed in x, y
-    // Try to take a step
-    // If out of bounds, retry (or reflect? retry preserves distribution better near boundary for simple walk)
-    // "bounded within radius 1"
-
-    // Safety break
+void gen_walk(double *x, double *y, double *z, double step_size, int dim) {
     int attempts = 0;
-    double nx, ny;
+    double nx, ny, nz;
     do {
-        double angle = 2.0 * M_PI * rand_double();
-        double r = step_size; // constant step size? "random walk" usually implies constant or gaussian. User didn't specify. Assuming constant step length.
+        if (dim == 3) {
+            // Random direction in 3D
+            double costheta = 1.0 - 2.0 * rand_double();
+            double phi = 2.0 * M_PI * rand_double();
+            double sintheta = sqrt(1.0 - costheta * costheta);
+            double dx = step_size * sintheta * cos(phi);
+            double dy = step_size * sintheta * sin(phi);
+            double dz = step_size * costheta;
 
-        nx = *x + r * cos(angle);
-        ny = *y + r * sin(angle);
+            nx = *x + dx;
+            ny = *y + dy;
+            nz = *z + dz;
 
-        attempts++;
-        if (attempts > 100) {
-            // If stuck (unlikely unless step size is huge), stay put
-            nx = *x;
-            ny = *y;
-            break;
+            if (nx*nx + ny*ny + nz*nz > 1.0) {
+                attempts++;
+                if (attempts > 100) { nx=*x; ny=*y; nz=*z; break; }
+            } else {
+                break;
+            }
+        } else {
+            double angle = 2.0 * M_PI * rand_double();
+            nx = *x + step_size * cos(angle);
+            ny = *y + step_size * sin(angle);
+            nz = 0.0;
+
+            if (nx*nx + ny*ny > 1.0) {
+                attempts++;
+                if (attempts > 100) { nx=*x; ny=*y; break; }
+            } else {
+                break;
+            }
         }
-    } while (nx*nx + ny*ny > 1.0);
+    } while (1);
 
     *x = nx;
     *y = ny;
+    *z = nz;
 }
 
 // Generate spiral
-void gen_spiral(double *x, double *y, long index, long total_points, double loops) {
+void gen_spiral(double *x, double *y, double *z, long index, long total_points, double loops, int dim) {
     double t = (double)index / (double)total_points;
-    double r = t; // Radius grows linearly
-    double theta = 2.0 * M_PI * loops * t;
-    *x = r * cos(theta);
-    *y = r * sin(theta);
+    if (dim == 3) {
+        // 3D Spiral (Helix on sphere or cylinder?)
+        // Let's do a spherical spiral
+        double r = t;
+        double theta = 2.0 * M_PI * loops * t; // Azimuthal
+        double phi = M_PI * t; // Polar angle 0 to PI
+
+        // Mapping to sphere surface spiral? Or volume?
+        // Standard "spiral" in 2D was r=t.
+        // Let's do cylindrical helix z=t, r=1? Or conical r=t, z=t?
+        // User didn't specify. Let's do a conical spiral.
+        *x = t * cos(2.0 * M_PI * loops * t);
+        *y = t * sin(2.0 * M_PI * loops * t);
+        *z = 2.0 * t - 1.0; // z from -1 to 1
+    } else {
+        double r = t;
+        double theta = 2.0 * M_PI * loops * t;
+        *x = r * cos(theta);
+        *y = r * sin(theta);
+        *z = 0.0;
+    }
 }
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
         printf("Usage: %s <N> <filename> [pattern]\n", argv[0]);
         printf("Patterns:\n");
-        printf("  random        Uniform random in unit circle (default)\n");
-        printf("  circle[P]     Circle radius 1. P = period (default N)\n");
-        printf("  walk[S]       Random walk in unit circle. S = step size (default 0.1)\n");
-        printf("  spiral[L]     Spiral. L = loops (default 3)\n");
+        printf("  [2D|3D]random   Uniform random in unit circle/sphere (default 2D)\n");
+        printf("  [2D]circle[P]   Circle radius 1. P = period (default N)\n");
+        printf("  [2D|3D]walk[S]  Random walk in unit circle/sphere. S = step size (default 0.1)\n");
+        printf("  [2D|3D]spiral[L] Spiral. L = loops (default 3)\n");
+        printf("  3Dsphere        Random points on unit sphere surface\n");
         return 1;
     }
 
     long n_points = atol(argv[1]);
     char *filename = argv[2];
-    char *pattern_str = (argc > 3) ? argv[3] : "random";
+    char *pattern_str = (argc > 3) ? argv[3] : "2Drandom";
 
     GeneratorConfig config;
     config.type = GEN_RANDOM;
+    config.dim = 2;
     config.param = 0.0;
 
-    // Parse pattern
-    if (strncmp(pattern_str, "circle", 6) == 0) {
+    // Detect Dimension
+    char *name_start = pattern_str;
+    if (strncmp(pattern_str, "2D", 2) == 0) {
+        config.dim = 2;
+        name_start += 2;
+    } else if (strncmp(pattern_str, "3D", 2) == 0) {
+        config.dim = 3;
+        name_start += 2;
+    }
+
+    // Parse pattern name
+    if (strncmp(name_start, "random", 6) == 0) {
+        config.type = GEN_RANDOM;
+    } else if (strncmp(name_start, "circle", 6) == 0) {
         config.type = GEN_CIRCLE;
-        char *p = pattern_str + 6;
+        char *p = name_start + 6;
         if (*p) config.param = atof(p);
         else config.param = (double)n_points;
-    } else if (strncmp(pattern_str, "walk", 4) == 0) {
+    } else if (strncmp(name_start, "walk", 4) == 0) {
         config.type = GEN_WALK;
-        char *p = pattern_str + 4;
+        char *p = name_start + 4;
         if (*p) config.param = atof(p);
         else config.param = 0.1;
-    } else if (strncmp(pattern_str, "spiral", 6) == 0) {
+    } else if (strncmp(name_start, "spiral", 6) == 0) {
         config.type = GEN_SPIRAL;
-        char *p = pattern_str + 6;
+        char *p = name_start + 6;
         if (*p) config.param = atof(p);
         else config.param = 3.0;
+    } else if (strncmp(name_start, "sphere", 6) == 0) {
+        config.type = GEN_SPHERE;
     } else {
-        // Default random
-        config.type = GEN_RANDOM;
+        // Fallback for aliases or legacy
+        if (strncmp(pattern_str, "circle", 6) == 0) {
+             config.dim = 2;
+             config.type = GEN_CIRCLE;
+             char *p = pattern_str + 6;
+             if (*p) config.param = atof(p);
+             else config.param = (double)n_points;
+        } else if (strncmp(pattern_str, "walk", 4) == 0) {
+             config.dim = 2;
+             config.type = GEN_WALK;
+             char *p = pattern_str + 4;
+             if (*p) config.param = atof(p);
+             else config.param = 0.1;
+        } else if (strncmp(pattern_str, "spiral", 6) == 0) {
+             config.dim = 2;
+             config.type = GEN_SPIRAL;
+             char *p = pattern_str + 6;
+             if (*p) config.param = atof(p);
+             else config.param = 3.0;
+        }
     }
 
     FILE *f = fopen(filename, "w");
@@ -132,30 +234,38 @@ int main(int argc, char *argv[]) {
 
     srand(time(NULL));
 
-    double x = 0.0, y = 0.0; // State for walk
+    double x = 0.0, y = 0.0, z = 0.0; // State for walk
 
     for (long i = 0; i < n_points; i++) {
-        double out_x, out_y;
+        double out_x, out_y, out_z;
 
         switch (config.type) {
             case GEN_CIRCLE:
-                gen_circle(&out_x, &out_y, i, config.param);
+                gen_circle(&out_x, &out_y, &out_z, i, config.param, config.dim);
                 break;
             case GEN_WALK:
-                gen_walk(&x, &y, config.param); // Updates x, y in place
+                gen_walk(&x, &y, &z, config.param, config.dim); // Updates state
                 out_x = x;
                 out_y = y;
+                out_z = z;
                 break;
             case GEN_SPIRAL:
-                gen_spiral(&out_x, &out_y, i, n_points, config.param);
+                gen_spiral(&out_x, &out_y, &out_z, i, n_points, config.param, config.dim);
+                break;
+            case GEN_SPHERE:
+                gen_sphere(&out_x, &out_y, &out_z, config.dim);
                 break;
             case GEN_RANDOM:
             default:
-                gen_random(&out_x, &out_y);
+                gen_random(&out_x, &out_y, &out_z, config.dim);
                 break;
         }
 
-        fprintf(f, "%f %f\n", out_x, out_y);
+        if (config.dim == 3) {
+            fprintf(f, "%f %f %f\n", out_x, out_y, out_z);
+        } else {
+            fprintf(f, "%f %f\n", out_x, out_y);
+        }
     }
 
     fclose(f);
