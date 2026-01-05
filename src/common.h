@@ -23,4 +23,6 @@ typedef struct {
     double *distances;
 } FrameInfo;
 
+int is_ascii_input_mode();
+
 #endif // COMMON_H

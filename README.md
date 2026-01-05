@@ -45,10 +45,15 @@ make
 - `<rlim>`: Distance limit for a frame to belong to a cluster (Euclidean distance).
   - Can be a standard floating-point value (e.g., `10.5`).
   - Can be in the format `a<val>` (e.g., `a1.5`). In this mode, the program scans the distance between consecutive frames, calculates the median distance, and sets `rlim = <val> * median_distance`.
-- `<fits_file>`: Path to the FITS file containing frames to be clustered.
-  - Can be a 2D or 3D image.
-  - The last axis is treated as the frame number (e.g., a 100x200x500 cube contains 500 frames of 100x200).
-  - Data format can be integers or floats.
+- `<input_file>`: Path to the input file containing frames to be clustered.
+  - **FITS file**:
+    - Can be a 2D or 3D image.
+    - The last axis is treated as the frame number (e.g., a 100x200x500 cube contains 500 frames of 100x200).
+    - Data format can be integers or floats.
+  - **ASCII text file (.txt)**:
+    - Reads one sample per line.
+    - Each line contains space-separated numbers representing coordinate values.
+    - The number of columns corresponds to the dimension of the input space.
 
 ### Options
 
