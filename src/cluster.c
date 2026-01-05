@@ -14,6 +14,8 @@
 #define ANSI_COLOR_ORANGE  "\x1b[38;5;208m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
 #define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_BG_GREEN      "\x1b[42m"
+#define ANSI_COLOR_BLACK   "\x1b[30m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 // Prototype declarations
@@ -767,6 +769,20 @@ int main(int argc, char *argv[]) {
 
                          int target_cl = frame_infos[k_idx].assignment;
 
+                         int is_active = clmembflag[target_cl];
+
+                         if (verbose_level >= 2) {
+                             if (is_active) {
+                                 printf(ANSI_BG_GREEN ANSI_COLOR_BLACK "  [VV]   Frame %5d also had distance measurement to Cluster %4d (Anchor Frame %5d). Frame %5d cluster membership is %4d. " ANSI_COLOR_RESET "\n",
+                                        k_idx, cj, clusters[cj].anchor.id, k_idx, target_cl);
+                             } else {
+                                 printf("  [VV]   Frame %5d also had distance measurement to Cluster %4d (Anchor Frame %5d). Frame %5d cluster membership is %4d.\n",
+                                        k_idx, cj, clusters[cj].anchor.id, k_idx, target_cl);
+                             }
+                         }
+
+                         if (!is_active) continue;
+
                          // Find the distance that frame k computed to cluster cj
                          // This requires searching frame_infos[k_idx].cluster_indices
                          // Optimisation: if we stored distance in visitor list it would be faster.
@@ -785,8 +801,6 @@ int main(int argc, char *argv[]) {
                              double val = fmatch(dr);
 
                              if (verbose_level >= 2) {
-                                 printf("  [VV]   Frame %5d also had distance measurement to Cluster %4d (Anchor Frame %5d). Frame %5d cluster membership is %4d.\n",
-                                        k_idx, cj, clusters[cj].anchor.id, k_idx, target_cl);
                                  printf("    dist %5ld-%-5d = %12.5e  dist %5d-%-5d = %12.5e, fmatch=%12.5e, updating GProb(Cluster %4d) from %12.5e to %12.5e\n",
                                         total_frames_processed, clusters[cj].anchor.id, dfc,
                                         k_idx, clusters[cj].anchor.id, dist_k,
