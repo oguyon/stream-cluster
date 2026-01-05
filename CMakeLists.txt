@@ -11,3 +11,6 @@ link_directories(${CFITSIO_LIBRARY_DIRS})
 
 add_executable(image_cluster src/cluster.c src/framedistance.c src/frameread.c)
 target_link_libraries(image_cluster ${CFITSIO_LIBRARIES} m)
+
+add_executable(image-cluster-mktxtseq src/mktestseq.c)
+target_link_libraries(image-cluster-mktxtseq m)
