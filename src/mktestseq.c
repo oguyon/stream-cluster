@@ -164,6 +164,7 @@ int main(int argc, char *argv[]) {
         printf("Options:\n");
         printf("  -repeat <M>     Repeat the pattern M times\n");
         printf("  -noise <R>      Add random noise with radius R to each point\n");
+        printf("  -shuffle        Shuffle the order of generated points\n");
         return 1;
     }
 
@@ -173,6 +174,7 @@ int main(int argc, char *argv[]) {
 
     long repeats = 1;
     double noise_radius = 0.0;
+    int shuffle = 0;
 
     // Parse arguments
     for (int i = 3; i < argc; i++) {
@@ -184,6 +186,8 @@ int main(int argc, char *argv[]) {
             if (i + 1 < argc) {
                 noise_radius = atof(argv[++i]);
             }
+        } else if (strcmp(argv[i], "-shuffle") == 0) {
+            shuffle = 1;
         } else {
             pattern_str = argv[i];
         }
@@ -255,6 +259,16 @@ int main(int argc, char *argv[]) {
 
     srand(time(NULL));
 
+    long total_points = n_points * repeats;
+    double *buffer = (double *)malloc(total_points * config.dim * sizeof(double));
+    if (!buffer) {
+        perror("Memory allocation failed for shuffle buffer");
+        fclose(f);
+        return 1;
+    }
+
+    long p_idx = 0;
+
     for (long r = 0; r < repeats; r++) {
         double x = 0.0, y = 0.0, z = 0.0; // Reset state for walk each repeat
 
@@ -286,23 +300,41 @@ int main(int argc, char *argv[]) {
             if (noise_radius > 0.0) {
                 double nx, ny, nz;
                 gen_random(&nx, &ny, &nz, config.dim);
-                // Scale unit random vector by noise_radius
-                // gen_random returns point inside unit sphere/circle (radius <= 1)
-                // So nx, ny, nz are within unit radius.
-                // We multiply by noise_radius.
                 out_x += nx * noise_radius;
                 out_y += ny * noise_radius;
                 out_z += nz * noise_radius;
             }
 
+            buffer[p_idx * config.dim + 0] = out_x;
+            buffer[p_idx * config.dim + 1] = out_y;
             if (config.dim == 3) {
-                fprintf(f, "%f %f %f\n", out_x, out_y, out_z);
-            } else {
-                fprintf(f, "%f %f\n", out_x, out_y);
+                buffer[p_idx * config.dim + 2] = out_z;
+            }
+            p_idx++;
+        }
+    }
+
+    if (shuffle) {
+        for (long i = total_points - 1; i > 0; i--) {
+            long j = (long)(rand_double() * (i + 1));
+            // Swap point i and j
+            for (int d = 0; d < config.dim; d++) {
+                double temp = buffer[i * config.dim + d];
+                buffer[i * config.dim + d] = buffer[j * config.dim + d];
+                buffer[j * config.dim + d] = temp;
             }
         }
     }
 
+    for (long i = 0; i < total_points; i++) {
+        if (config.dim == 3) {
+            fprintf(f, "%f %f %f\n", buffer[i * 3 + 0], buffer[i * 3 + 1], buffer[i * 3 + 2]);
+        } else {
+            fprintf(f, "%f %f\n", buffer[i * 2 + 0], buffer[i * 2 + 1]);
+        }
+    }
+
+    free(buffer);
     fclose(f);
     return 0;
 }
