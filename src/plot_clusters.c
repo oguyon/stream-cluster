@@ -81,11 +81,16 @@ int main(int argc, char *argv[]) {
     }
 
     // Storage for overlays
-    Anchor anchors[1000]; // Fixed limit for simplicity or make dynamic
+    Anchor anchors[1000];
     int num_anchors = 0;
 
-    HeaderLine headers[100];
-    int num_headers = 0;
+    HeaderLine params[100];
+    int num_params = 0;
+
+    HeaderLine stats[100];
+    int num_stats = 0;
+
+    int header_mode = 0; // 0: None, 1: Parameters, 2: Stats
 
     double rlim = 0.0;
 
@@ -135,25 +140,52 @@ int main(int argc, char *argv[]) {
                         num_anchors++;
                     }
                 }
+                continue; // Skip processing NEWCLUSTER as header text
             }
 
-            // Collect header lines for display (Parameters, Stats, and key-values)
-            // Skip NEWCLUSTER here
-            if (strncmp(line, "# NEWCLUSTER", 12) != 0) {
-                if (num_headers < 100) {
+            // Check for Section Headers
+            if (strncmp(line, "# Parameters:", 13) == 0) {
+                header_mode = 1;
+            } else if (strncmp(line, "# Stats:", 8) == 0) {
+                header_mode = 2;
+            }
+
+            // Collect header lines for display
+            if (header_mode > 0) {
+                // Determine target buffer
+                HeaderLine *target_arr = (header_mode == 1) ? params : stats;
+                int *target_count = (header_mode == 1) ? &num_params : &num_stats;
+                int max_count = 100;
+
+                if (*target_count < max_count) {
                     // strip newline
                     size_t len = strlen(line);
                     if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
 
-                    // Store line without the initial "# " if possible, or just the whole line?
-                    // Request says "Overlay on the plot... the clustering parameters... clustering stats".
-                    // The file has lines like "# Parameters:" and "# rlim 0.500".
-                    // We can just strip the leading "# ".
+                    // Strip the leading "# "
                     char *text_start = line + 1;
                     if (*text_start == ' ') text_start++;
 
-                    strncpy(headers[num_headers].text, text_start, sizeof(headers[0].text)-1);
-                    num_headers++;
+                    // Replace "Total Distance Computations" with "# dist comp"
+                    char display_text[256];
+                    char *found = strstr(text_start, "Total Distance Computations");
+                    if (found) {
+                        // Construct new string
+                        // Copy prefix
+                        size_t prefix_len = found - text_start;
+                        strncpy(display_text, text_start, prefix_len);
+                        display_text[prefix_len] = '\0';
+                        // Append replacement
+                        strcat(display_text, "# dist comp");
+                        // Append suffix (skip original phrase)
+                        strcat(display_text, found + strlen("Total Distance Computations"));
+                    } else {
+                        strncpy(display_text, text_start, sizeof(display_text)-1);
+                        display_text[sizeof(display_text)-1] = '\0';
+                    }
+
+                    strncpy(target_arr[*target_count].text, display_text, sizeof(target_arr[0].text)-1);
+                    (*target_count)++;
                 }
             }
             continue;
@@ -195,7 +227,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Draw Anchors
-    double r_px = (rlim / VIEW_RANGE) * SVG_WIDTH; // Simple scaling assuming uniform aspect
+    double r_px = (rlim / VIEW_RANGE) * SVG_WIDTH;
     for (int i = 0; i < num_anchors; i++) {
         double ax = map_x(anchors[i].x);
         double ay = map_y(anchors[i].y);
@@ -211,14 +243,26 @@ int main(int argc, char *argv[]) {
                 ax, ay - cross_size, ax, ay + cross_size);
     }
 
-    // Draw Text Overlay (Top Right)
-    double text_x = SVG_WIDTH - 10;
-    double text_y = 20;
     double line_height = 15;
 
+    // Draw Parameters (Top Left)
+    double text_x = 10;
+    double text_y = 20;
+
+    fprintf(fout, "<g font-family=\"monospace\" font-size=\"12\" text-anchor=\"start\">\n");
+    for (int i = 0; i < num_params; i++) {
+        fprintf(fout, "<text x=\"%.2f\" y=\"%.2f\">%s</text>\n", text_x, text_y, params[i].text);
+        text_y += line_height;
+    }
+    fprintf(fout, "</g>\n");
+
+    // Draw Stats (Top Right)
+    text_x = SVG_WIDTH - 10;
+    text_y = 20;
+
     fprintf(fout, "<g font-family=\"monospace\" font-size=\"12\" text-anchor=\"end\">\n");
-    for (int i = 0; i < num_headers; i++) {
-        fprintf(fout, "<text x=\"%.2f\" y=\"%.2f\">%s</text>\n", text_x, text_y, headers[i].text);
+    for (int i = 0; i < num_stats; i++) {
+        fprintf(fout, "<text x=\"%.2f\" y=\"%.2f\">%s</text>\n", text_x, text_y, stats[i].text);
         text_y += line_height;
     }
     fprintf(fout, "</g>\n");
