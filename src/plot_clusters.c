@@ -19,6 +19,16 @@ const char *colors[] = {
 };
 #define NUM_COLORS (sizeof(colors) / sizeof(colors[0]))
 
+typedef struct {
+    int id;
+    double x;
+    double y;
+} Anchor;
+
+typedef struct {
+    char text[256];
+} HeaderLine;
+
 double map_x(double x) {
     return (x - VIEW_MIN) / VIEW_RANGE * SVG_WIDTH;
 }
@@ -70,6 +80,15 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Storage for overlays
+    Anchor anchors[1000]; // Fixed limit for simplicity or make dynamic
+    int num_anchors = 0;
+
+    HeaderLine headers[100];
+    int num_headers = 0;
+
+    double rlim = 0.0;
+
     // Write SVG Header
     fprintf(fout, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n");
     fprintf(fout, "<svg width=\"%d\" height=\"%d\" xmlns=\"http://www.w3.org/2000/svg\">\n", SVG_WIDTH, SVG_HEIGHT);
@@ -93,15 +112,59 @@ int main(int argc, char *argv[]) {
     long line_num = 0;
     while (fgets(line, sizeof(line), fin)) {
         line_num++;
-        // Skip comments or empty lines
-        if (line[0] == '#' || line[0] == '\n') continue;
+
+        // Handle comments / headers
+        if (line[0] == '#') {
+            // Check for rlim
+            if (strncmp(line, "# rlim", 6) == 0) {
+                sscanf(line + 6, "%lf", &rlim);
+            }
+
+            // Check for NEWCLUSTER
+            if (strncmp(line, "# NEWCLUSTER", 12) == 0) {
+                if (num_anchors < 1000) {
+                    int id;
+                    long frame_idx;
+                    double ax, ay;
+                    // Format: # NEWCLUSTER <ID> <FrameIdx> <X> <Y>
+                    // Use sscanf carefully
+                    if (sscanf(line + 12, "%d %ld %lf %lf", &id, &frame_idx, &ax, &ay) >= 4) {
+                        anchors[num_anchors].id = id;
+                        anchors[num_anchors].x = ax;
+                        anchors[num_anchors].y = ay;
+                        num_anchors++;
+                    }
+                }
+            } else if (strncmp(line, "# Parameters:", 13) == 0 || strncmp(line, "# Stats:", 8) == 0) {
+                // Section headers, maybe store as bold or just store
+                if (num_headers < 100) {
+                    // strip newline
+                    size_t len = strlen(line);
+                    if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+                    strncpy(headers[num_headers].text, line + 2, sizeof(headers[0].text)-1); // Skip "# "
+                    num_headers++;
+                }
+            } else if (line[1] != ' ') {
+                // Other parameters/stats usually follow format "# key value"
+                // Store them for display
+                if (num_headers < 100) {
+                    size_t len = strlen(line);
+                    if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+                    strncpy(headers[num_headers].text, line + 2, sizeof(headers[0].text)-1);
+                    num_headers++;
+                }
+            }
+            continue;
+        }
+
+        // Skip empty lines
+        if (line[0] == '\n') continue;
 
         long frame_idx;
         int cluster_id;
         double x, y;
 
         // Parse: frame_idx cluster_id x y ...
-        // We handle variable whitespace
         char *token = strtok(line, " \t\n");
         if (!token) continue;
         frame_idx = atol(token);
@@ -124,11 +187,42 @@ int main(int argc, char *argv[]) {
 
         const char *color = colors[abs(cluster_id) % NUM_COLORS];
 
-        // Use Cluster -1 for noise/unassigned if convention exists, typically cluster_id >= 0
         if (cluster_id < 0) color = "black";
 
         fprintf(fout, "<circle cx=\"%.2f\" cy=\"%.2f\" r=\"3\" fill=\"%s\" opacity=\"0.7\" />\n", sx, sy, color);
     }
+
+    // Draw Anchors
+    double r_px = (rlim / VIEW_RANGE) * SVG_WIDTH; // Simple scaling assuming uniform aspect
+    for (int i = 0; i < num_anchors; i++) {
+        double ax = map_x(anchors[i].x);
+        double ay = map_y(anchors[i].y);
+
+        // Draw Circle
+        fprintf(fout, "<circle cx=\"%.2f\" cy=\"%.2f\" r=\"%.2f\" stroke=\"black\" fill=\"none\" stroke-width=\"1.5\" />\n", ax, ay, r_px);
+
+        // Draw Cross
+        double cross_size = 5.0;
+        fprintf(fout, "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"black\" stroke-width=\"2\" />\n",
+                ax - cross_size, ay, ax + cross_size, ay);
+        fprintf(fout, "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"black\" stroke-width=\"2\" />\n",
+                ax, ay - cross_size, ax, ay + cross_size);
+    }
+
+    // Draw Text Overlay (Top Right)
+    double text_x = SVG_WIDTH - 10;
+    double text_y = 20;
+    double line_height = 15;
+
+    fprintf(fout, "<g font-family=\"monospace\" font-size=\"12\" text-anchor=\"end\">\n");
+    for (int i = 0; i < num_headers; i++) {
+        // Skip NEWCLUSTER lines if they got into headers by accident (filtering logic above should prevent it)
+        if (strncmp(headers[i].text, "NEWCLUSTER", 10) == 0) continue;
+
+        fprintf(fout, "<text x=\"%.2f\" y=\"%.2f\">%s</text>\n", text_x, text_y, headers[i].text);
+        text_y += line_height;
+    }
+    fprintf(fout, "</g>\n");
 
     fprintf(fout, "</svg>\n");
 
