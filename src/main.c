@@ -200,6 +200,8 @@ int main(int argc, char *argv[]) {
     } else {
         // config.user_outdir points to argv string. out_dir is a strdup.
         free(out_dir);
+        out_dir = NULL; // Prevent use after free
+        out_dir_alloc = 0; // We freed the allocation
     }
 
     ClusterState state;
@@ -242,22 +244,7 @@ int main(int argc, char *argv[]) {
         if (config.scandist_mode) {
              if (state.distall_out) fclose(state.distall_out);
              close_frameread();
-             // Clean up if config.user_outdir was auto-generated (malloced)
-             if (config.user_outdir && !out_dir_alloc) {
-                 // Wait, logic above:
-                 // if user_outdir was NULL, we set it to out_dir (which was malloced).
-                 // out_dir_alloc was true.
-                 // If user_outdir was set (argv), out_dir was malloced/freed, config.user_outdir is argv.
-             }
-             // It is hard to track perfectly without a flag in config.
-             // But simpler: we check if config.user_outdir != argv value.
-             // But we iterated argv.
-             // Let's rely on the fact that if we allocated it, we assigned it.
-             // We can just check if we assigned it from out_dir.
-             // Re-implement clean exit logic:
-             if (config.user_outdir && out_dir_alloc && config.user_outdir == out_dir) {
-                 free(config.user_outdir);
-             }
+             if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
              return 0;
         }
         // If auto_rlim_mode, reset for clustering
@@ -305,9 +292,7 @@ int main(int argc, char *argv[]) {
     free(state.clmembflag);
     free(state.assignments);
 
-    if (config.user_outdir && out_dir_alloc && config.user_outdir == out_dir) {
-         free(config.user_outdir);
-    }
+    if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
 
     close_frameread();
 

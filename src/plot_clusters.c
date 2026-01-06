@@ -96,12 +96,17 @@ int main(int argc, char *argv[]) {
         // Skip comments or empty lines
         if (line[0] == '#' || line[0] == '\n') continue;
 
+        long frame_idx;
         int cluster_id;
         double x, y;
 
-        // Parse: cluster_id x y ...
+        // Parse: frame_idx cluster_id x y ...
         // We handle variable whitespace
         char *token = strtok(line, " \t\n");
+        if (!token) continue;
+        frame_idx = atol(token);
+
+        token = strtok(NULL, " \t\n");
         if (!token) continue;
         cluster_id = atoi(token);
 

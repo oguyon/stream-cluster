@@ -222,10 +222,48 @@ void write_results(ClusterConfig *config, ClusterState *state) {
 
         FILE *clustered_out = fopen(clustered_fname, "w");
         if (clustered_out) {
+            // Write Header
+            fprintf(clustered_out, "# Parameters:\n");
+            fprintf(clustered_out, "# rlim %.6f\n", config->rlim);
+            fprintf(clustered_out, "# dprob %.6f\n", config->deltaprob);
+            fprintf(clustered_out, "# maxcl %d\n", config->maxnbclust);
+            fprintf(clustered_out, "# maxim %ld\n", config->maxnbfr);
+            fprintf(clustered_out, "# gprob_mode %d\n", config->gprob_mode);
+            fprintf(clustered_out, "# fmatcha %.2f\n", config->fmatch_a);
+            fprintf(clustered_out, "# fmatchb %.2f\n", config->fmatch_b);
+
+            fprintf(clustered_out, "# Stats:\n");
+            fprintf(clustered_out, "# Total Clusters %d\n", state->num_clusters);
+            fprintf(clustered_out, "# Total Distance Computations %ld\n", state->framedist_calls);
+            fprintf(clustered_out, "# Clusters Pruned %ld\n", state->clusters_pruned);
+            double avg_dist = (state->total_frames_processed > 0) ? (double)state->framedist_calls / state->total_frames_processed : 0.0;
+            fprintf(clustered_out, "# Avg Dist/Frame %.2f\n", avg_dist);
+
+            int next_new_cluster = 0;
+
             for (long i = 0; i < state->total_frames_processed; i++) {
+                int assigned = state->assignments[i];
+                if (assigned == next_new_cluster) {
+                    // This frame created a new cluster
+                    // We need anchor coordinates.
+                    // Since clusters are created sequentially 0, 1, 2...
+                    // The anchor for cluster 'assigned' is stored in state->clusters[assigned].anchor
+                    // BUT: state->clusters stores only the ANCHOR frame data.
+                    // Is the anchor for cluster X *exactly* the frame that created it? Yes.
+                    // So we can use state->clusters[assigned].anchor.data
+
+                    fprintf(clustered_out, "# NEWCLUSTER %d %ld ", assigned, i);
+                    for (long k = 0; k < nelements; k++) {
+                        fprintf(clustered_out, "%f ", state->clusters[assigned].anchor.data[k]);
+                    }
+                    fprintf(clustered_out, "\n");
+                    next_new_cluster++;
+                }
+
                 Frame *fr = getframe_at(i);
                 if (fr) {
-                    fprintf(clustered_out, "%d ", state->assignments[i]);
+                    // Format: FrameIndex ClusterID [Data...]
+                    fprintf(clustered_out, "%ld %d ", i, assigned);
                     for (long k = 0; k < nelements; k++) {
                         fprintf(clustered_out, "%f ", fr->data[k]);
                     }
