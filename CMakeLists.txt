@@ -14,3 +14,6 @@ target_link_libraries(image_cluster ${CFITSIO_LIBRARIES} m)
 
 add_executable(image-cluster-mktxtseq src/mktestseq.c)
 target_link_libraries(image-cluster-mktxtseq m)
+
+add_executable(image_cluster_plot src/plot_clusters.c)
+target_link_libraries(image_cluster_plot m)
