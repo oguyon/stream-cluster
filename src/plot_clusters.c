@@ -27,9 +27,18 @@ double map_y(double y) {
     return (VIEW_MAX - y) / VIEW_RANGE * SVG_HEIGHT; // SVG y is down
 }
 
+void print_args_on_error(int argc, char *argv[]) {
+    fprintf(stderr, "\nProgram arguments:\n");
+    for (int i = 0; i < argc; i++) {
+        fprintf(stderr, "  argv[%d] = \"%s\"\n", i, argv[i]);
+    }
+    fprintf(stderr, "\n");
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <clustered_file> [output_svg]\n", argv[0]);
+        print_args_on_error(argc, argv);
         return 1;
     }
 
@@ -49,6 +58,7 @@ int main(int argc, char *argv[]) {
     FILE *fin = fopen(input_filename, "r");
     if (!fin) {
         perror("Error opening input file");
+        print_args_on_error(argc, argv);
         return 1;
     }
 
@@ -56,6 +66,7 @@ int main(int argc, char *argv[]) {
     if (!fout) {
         perror("Error opening output file");
         fclose(fin);
+        print_args_on_error(argc, argv);
         return 1;
     }
 

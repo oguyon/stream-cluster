@@ -136,6 +136,14 @@ void gen_spiral(double *x, double *y, double *z, long index, long total_points, 
     }
 }
 
+void print_args_on_error(int argc, char *argv[]) {
+    fprintf(stderr, "\nProgram arguments:\n");
+    for (int i = 0; i < argc; i++) {
+        fprintf(stderr, "  argv[%d] = \"%s\"\n", i, argv[i]);
+    }
+    fprintf(stderr, "\n");
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 3) {
         printf("Usage: %s <N> <filename> [pattern] [options]\n", argv[0]);
@@ -149,6 +157,7 @@ int main(int argc, char *argv[]) {
         printf("  -repeat <M>     Repeat the pattern M times\n");
         printf("  -noise <R>      Add random noise with radius R to each point\n");
         printf("  -shuffle        Shuffle the order of generated points\n");
+        print_args_on_error(argc, argv);
         return 1;
     }
 
@@ -165,13 +174,25 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[i], "-repeat") == 0) {
             if (i + 1 < argc) {
                 repeats = atol(argv[++i]);
+            } else {
+                 fprintf(stderr, "Error: Missing value for -repeat\n");
+                 print_args_on_error(argc, argv);
+                 return 1;
             }
         } else if (strcmp(argv[i], "-noise") == 0) {
             if (i + 1 < argc) {
                 noise_radius = atof(argv[++i]);
+            } else {
+                 fprintf(stderr, "Error: Missing value for -noise\n");
+                 print_args_on_error(argc, argv);
+                 return 1;
             }
         } else if (strcmp(argv[i], "-shuffle") == 0) {
             shuffle = 1;
+        } else if (argv[i][0] == '-') {
+             fprintf(stderr, "Error: Unknown option: %s\n", argv[i]);
+             print_args_on_error(argc, argv);
+             return 1;
         } else {
             pattern_str = argv[i];
         }
@@ -238,6 +259,7 @@ int main(int argc, char *argv[]) {
     FILE *f = fopen(filename, "w");
     if (!f) {
         perror("Failed to open output file");
+        print_args_on_error(argc, argv);
         return 1;
     }
 
