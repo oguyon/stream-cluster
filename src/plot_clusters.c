@@ -90,9 +90,6 @@ void free_canvas(Canvas *c) {
 void set_pixel(Canvas *c, int x, int y, ColorRGB col) {
     if (x < 0 || x >= c->width || y < 0 || y >= c->height) return;
     int idx = (y * c->width + x) * 3;
-    // Simple blending (alpha=0.7 implies 30% background)
-    // Background assumed white (255)
-    // out = 0.7*col + 0.3*255
     c->data[idx]   = (unsigned char)(0.7 * col.r + 0.3 * 255);
     c->data[idx+1] = (unsigned char)(0.7 * col.g + 0.3 * 255);
     c->data[idx+2] = (unsigned char)(0.7 * col.b + 0.3 * 255);
@@ -152,28 +149,39 @@ void draw_filled_circle(Canvas *c, int cx, int cy, int r, ColorRGB col) {
     }
 }
 
-void draw_char(Canvas *c, int x, int y, char ch, ColorRGB col) {
+void draw_char(Canvas *c, int x, int y, char ch, ColorRGB col, int scale, int bold) {
     if (ch < 32 || ch > 126) return;
     int idx = ch - 32;
     for (int col_idx = 0; col_idx < 5; col_idx++) {
         unsigned char bits = font5x7[idx][col_idx];
         for (int row = 0; row < 7; row++) {
             if (bits & (1 << row)) {
-                set_pixel_opaque(c, x + col_idx, y + row, col);
+                // Scale up
+                for (int sy=0; sy<scale; sy++) {
+                    for (int sx=0; sx<scale; sx++) {
+                        set_pixel_opaque(c, x + col_idx*scale + sx, y + row*scale + sy, col);
+                        if (bold) {
+                            set_pixel_opaque(c, x + col_idx*scale + sx + 1, y + row*scale + sy, col);
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-void draw_string(Canvas *c, int x, int y, const char *str, ColorRGB col, int align) {
+void draw_string(Canvas *c, int x, int y, const char *str, ColorRGB col, int align, int scale, int bold) {
     // align: 0=left, 1=right
     int len = strlen(str);
-    int width = len * 6; // 5 + 1 spacing
+    int char_width = 5 * scale;
+    int space_width = 1 * scale;
+    int total_width = len * (char_width + space_width);
+
     int start_x = x;
-    if (align == 1) start_x = x - width;
+    if (align == 1) start_x = x - total_width;
 
     for (int i = 0; i < len; i++) {
-        draw_char(c, start_x + i * 6, y, str[i], col);
+        draw_char(c, start_x + i * (char_width + space_width), y, str[i], col, scale, bold);
     }
 }
 
@@ -208,7 +216,7 @@ int save_png(Canvas *c, const char *filename) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <clustered_file> [output] [-png]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <clustered_file> [output] [-png] [-fs <size>]\n", argv[0]);
         print_args_on_error(argc, argv);
         return 1;
     }
@@ -216,10 +224,16 @@ int main(int argc, char *argv[]) {
     char *input_filename = argv[1];
     char output_filename[1024] = {0};
     int png_mode = 0;
+    double font_size = 12.0;
 
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-png") == 0) {
             png_mode = 1;
+        } else if (strcmp(argv[i], "-fs") == 0) {
+            if (i + 1 < argc) {
+                font_size = atof(argv[++i]);
+                if (font_size < 1.0) font_size = 12.0;
+            }
         } else {
             strncpy(output_filename, argv[i], sizeof(output_filename)-1);
         }
@@ -252,11 +266,9 @@ int main(int argc, char *argv[]) {
         draw_line(canvas, 0, cy, SVG_WIDTH, cy, grid_col);
         draw_line(canvas, cx, 0, cx, SVG_HEIGHT, grid_col);
 
-        // Dashed box - simulate with dots or solid gray
         ColorRGB gray = {128, 128, 128};
         int bx1 = (int)map_x(-1), by1 = (int)map_y(1);
         int bx2 = (int)map_x(1), by2 = (int)map_y(-1);
-        // Draw rect
         draw_line(canvas, bx1, by1, bx2, by1, gray);
         draw_line(canvas, bx2, by1, bx2, by2, gray);
         draw_line(canvas, bx2, by2, bx1, by2, gray);
@@ -416,20 +428,23 @@ int main(int argc, char *argv[]) {
 
     // Text Overlays
     int text_y = 20;
-    int line_height = 15;
+    int line_height = (int)(font_size * 1.5);
+    int scale = (int)(font_size / 10.0);
+    if (scale < 1) scale = 1;
 
     if (png_mode) {
         ColorRGB black = {0,0,0};
         int text_x = 10;
         for (int i = 0; i < num_params; i++) {
-            draw_string(canvas, text_x, text_y, params[i].text, black, 0);
+            draw_string(canvas, text_x, text_y, params[i].text, black, 0, scale, 0);
             text_y += line_height;
         }
 
         text_x = SVG_WIDTH - 10;
         text_y = 20;
         for (int i = 0; i < num_stats; i++) {
-            draw_string(canvas, text_x, text_y, stats[i].text, black, 1);
+            int bold = (strstr(stats[i].text, "Avg Dist/Frame") != NULL);
+            draw_string(canvas, text_x, text_y, stats[i].text, black, 1, scale, bold);
             text_y += line_height;
         }
 
@@ -437,7 +452,7 @@ int main(int argc, char *argv[]) {
         free_canvas(canvas);
     } else {
         double text_x = 10;
-        fprintf(svg_out, "<g font-family=\"monospace\" font-size=\"12\" text-anchor=\"start\">\n");
+        fprintf(svg_out, "<g font-family=\"monospace\" font-size=\"%.1f\" text-anchor=\"start\">\n", font_size);
         for (int i = 0; i < num_params; i++) {
             fprintf(svg_out, "<text x=\"%.2f\" y=\"%d\">%s</text>\n", text_x, text_y, params[i].text);
             text_y += line_height;
@@ -446,9 +461,11 @@ int main(int argc, char *argv[]) {
 
         text_x = SVG_WIDTH - 10;
         text_y = 20;
-        fprintf(svg_out, "<g font-family=\"monospace\" font-size=\"12\" text-anchor=\"end\">\n");
+        fprintf(svg_out, "<g font-family=\"monospace\" font-size=\"%.1f\" text-anchor=\"end\">\n", font_size);
         for (int i = 0; i < num_stats; i++) {
-            fprintf(svg_out, "<text x=\"%.2f\" y=\"%d\">%s</text>\n", text_x, text_y, stats[i].text);
+            int bold = (strstr(stats[i].text, "Avg Dist/Frame") != NULL);
+            if (bold) fprintf(svg_out, "<text x=\"%.2f\" y=\"%d\" font-weight=\"bold\">%s</text>\n", text_x, text_y, stats[i].text);
+            else fprintf(svg_out, "<text x=\"%.2f\" y=\"%d\">%s</text>\n", text_x, text_y, stats[i].text);
             text_y += line_height;
         }
         fprintf(svg_out, "</g>\n");
