@@ -291,6 +291,20 @@ void write_results(ClusterConfig *config, ClusterState *state) {
     if (clustered_out) {
         fprintf(clustered_out, "# Parameters:\n");
         fprintf(clustered_out, "# rlim %.6f\n", config->rlim);
+        fprintf(clustered_out, "# dprob %.6f\n", config->deltaprob);
+        fprintf(clustered_out, "# maxcl %d\n", config->maxnbclust);
+        fprintf(clustered_out, "# maxim %ld\n", config->maxnbfr);
+        fprintf(clustered_out, "# gprob_mode %d\n", config->gprob_mode);
+        fprintf(clustered_out, "# fmatcha %.2f\n", config->fmatch_a);
+        fprintf(clustered_out, "# fmatchb %.2f\n", config->fmatch_b);
+
+        fprintf(clustered_out, "# Stats:\n");
+        fprintf(clustered_out, "# Total Clusters %d\n", state->num_clusters);
+        fprintf(clustered_out, "# Total Distance Computations %ld\n", state->framedist_calls);
+        fprintf(clustered_out, "# Clusters Pruned %ld\n", state->clusters_pruned);
+        double avg_dist = (state->total_frames_processed > 0) ? (double)state->framedist_calls / state->total_frames_processed : 0.0;
+        fprintf(clustered_out, "# Avg Dist/Frame %.2f\n", avg_dist);
+
         int next_new_cluster = 0;
         for (long i = 0; i < state->total_frames_processed; i++) {
             int assigned = state->assignments[i];
