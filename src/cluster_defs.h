@@ -22,6 +22,7 @@ typedef struct {
     int gprob_mode;
     int verbose_level;
     int fitsout_mode;
+    int pngout_mode; // Added pngout flag
     double fmatch_a;
     double fmatch_b;
 } ClusterConfig;

@@ -7,11 +7,41 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(CFITSIO REQUIRED cfitsio)
 find_package(PNG REQUIRED)
 
-include_directories(${CFITSIO_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS} src)
-link_directories(${CFITSIO_LIBRARY_DIRS} ${PNG_LIBRARY_DIRS})
+# FFmpeg libraries
+pkg_check_modules(AVFORMAT REQUIRED libavformat)
+pkg_check_modules(AVCODEC REQUIRED libavcodec)
+pkg_check_modules(SWSCALE REQUIRED libswscale)
+pkg_check_modules(AVUTIL REQUIRED libavutil)
 
-add_executable(image-cluster src/main.c src/cluster_core.c src/cluster_io.c src/framedistance.c src/frameread.c)
-target_link_libraries(image-cluster ${CFITSIO_LIBRARIES} m)
+include_directories(
+    ${CFITSIO_INCLUDE_DIRS}
+    ${PNG_INCLUDE_DIRS}
+    ${AVFORMAT_INCLUDE_DIRS}
+    ${AVCODEC_INCLUDE_DIRS}
+    ${SWSCALE_INCLUDE_DIRS}
+    ${AVUTIL_INCLUDE_DIRS}
+    src
+)
+
+link_directories(
+    ${CFITSIO_LIBRARY_DIRS}
+    ${PNG_LIBRARY_DIRS}
+    ${AVFORMAT_LIBRARY_DIRS}
+    ${AVCODEC_LIBRARY_DIRS}
+    ${SWSCALE_LIBRARY_DIRS}
+    ${AVUTIL_LIBRARY_DIRS}
+)
+
+add_executable(image-cluster src/main.c src/cluster_core.c src/cluster_io.c src/framedistance.c src/frameread.c src/png_io.c)
+target_link_libraries(image-cluster
+    ${CFITSIO_LIBRARIES}
+    ${PNG_LIBRARIES}
+    ${AVFORMAT_LIBRARIES}
+    ${AVCODEC_LIBRARIES}
+    ${SWSCALE_LIBRARIES}
+    ${AVUTIL_LIBRARIES}
+    m
+)
 
 add_executable(image-cluster-mktxtseq src/mktestseq.c)
 target_link_libraries(image-cluster-mktxtseq m)
@@ -19,5 +49,5 @@ target_link_libraries(image-cluster-mktxtseq m)
 add_executable(image-cluster-plot src/plot_clusters.c)
 target_link_libraries(image-cluster-plot ${PNG_LIBRARIES} m)
 
-add_executable(image-cluster-3Dmodel src/model_3d.c)
-target_link_libraries(image-cluster-3Dmodel m)
+add_executable(image-cluster-NDmodel src/model_nd.c)
+target_link_libraries(image-cluster-NDmodel m)
