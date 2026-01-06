@@ -16,9 +16,18 @@ void handle_sigint(int sig) {
     stop_requested = 1;
 }
 
+void print_args_on_error(int argc, char *argv[]) {
+    fprintf(stderr, "\nProgram arguments:\n");
+    for (int i = 0; i < argc; i++) {
+        fprintf(stderr, "  argv[%d] = \"%s\"\n", i, argv[i]);
+    }
+    fprintf(stderr, "\n");
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         print_usage(argv[0]);
+        print_args_on_error(argc, argv);
         return 1;
     }
 
@@ -47,6 +56,7 @@ int main(int argc, char *argv[]) {
             config.auto_rlim_factor = strtod(argv[1] + 1, &endptr);
             if (*endptr != '\0') {
                  fprintf(stderr, "Error: Invalid format for auto-rlim. Expected 'a<float>', got '%s'\n", argv[1]);
+                 print_args_on_error(argc, argv);
                  return 1;
             }
             config.auto_rlim_mode = 1;
@@ -54,12 +64,14 @@ int main(int argc, char *argv[]) {
         } else if (argv[1][0] == '-') {
             fprintf(stderr, "Error: First argument must be rlim (numerical value) or auto-rlim (a<val>), found option: %s\n", argv[1]);
             print_usage(argv[0]);
+            print_args_on_error(argc, argv);
             return 1;
         } else {
             char *endptr;
             config.rlim = strtod(argv[1], &endptr);
             if (*endptr != '\0') {
                  fprintf(stderr, "Error: Invalid rlim value: %s\n", argv[1]);
+                 print_args_on_error(argc, argv);
                  return 1;
             }
             arg_idx = 2;
@@ -72,18 +84,21 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[arg_idx], "-dprob") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -dprob\n");
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.deltaprob = atof(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-maxcl") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -maxcl\n");
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.maxnbclust = atoi(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-maxim") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -maxim\n");
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.maxnbfr = atol(argv[++arg_idx]);
@@ -94,6 +109,7 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[arg_idx], "-outdir") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -outdir\n");
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.user_outdir = argv[++arg_idx];
@@ -110,12 +126,14 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[arg_idx], "-fmatcha") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -fmatcha\n");
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.fmatch_a = atof(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-fmatchb") == 0) {
             if (arg_idx + 1 >= argc) {
                 fprintf(stderr, "Error: Missing value for option -fmatchb\n");
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.fmatch_b = atof(argv[++arg_idx]);
@@ -124,10 +142,12 @@ int main(int argc, char *argv[]) {
         } else if (argv[arg_idx][0] == '-') {
             fprintf(stderr, "Error: Unknown option: %s\n", argv[arg_idx]);
             print_usage(argv[0]);
+            print_args_on_error(argc, argv);
             return 1;
         } else {
             if (config.fits_filename != NULL) {
                 fprintf(stderr, "Error: Too many arguments or multiple input files specified (already have '%s', found '%s')\n", config.fits_filename, argv[arg_idx]);
+                print_args_on_error(argc, argv);
                 return 1;
             }
             config.fits_filename = argv[arg_idx];
@@ -138,19 +158,24 @@ int main(int argc, char *argv[]) {
     if (!config.fits_filename) {
         fprintf(stderr, "Error: Missing input file.\n");
         if (!config.scandist_mode) print_usage(argv[0]);
+        print_args_on_error(argc, argv);
         return 1;
     }
 
     if (init_frameread(config.fits_filename) != 0) {
+        print_args_on_error(argc, argv);
         return 1;
     }
 
     // Determine output directory
     char *out_dir = NULL;
+    int out_dir_alloc = 0; // Flag to track if out_dir was malloced locally
     if (config.user_outdir) {
         out_dir = strdup(config.user_outdir);
+        out_dir_alloc = 1;
     } else {
         out_dir = create_output_dir_name(config.fits_filename);
+        out_dir_alloc = 1;
     }
 
     if (!out_dir) {
@@ -167,19 +192,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // If we didn't have user_outdir set, we might want to store the auto-generated one in config
-    // so other functions can use it if they rely on config.user_outdir.
-    // However, logic in other files currently regenerates it if user_outdir is NULL.
-    // It's safer to set it in config.
     if (!config.user_outdir) {
-        config.user_outdir = out_dir; // Assume ownership or simple pointer?
-        // `out_dir` was malloced by create_output_dir_name.
-        // We can just assign it.
+        config.user_outdir = out_dir;
+        // We transferred ownership of the malloced string to config.user_outdir
+        // so we don't need to free out_dir here (it points to same memory)
+        // But we need to remember to free config.user_outdir at exit if it was auto-generated.
     } else {
-        // user_outdir is argv pointer, out_dir is malloced strdup.
-        // We can free out_dir here since we just used it to mkdir.
+        // config.user_outdir points to argv string. out_dir is a strdup.
         free(out_dir);
-        // But wait, if we used create_output_dir_name, we want to keep it.
     }
 
     ClusterState state;
@@ -222,11 +242,21 @@ int main(int argc, char *argv[]) {
         if (config.scandist_mode) {
              if (state.distall_out) fclose(state.distall_out);
              close_frameread();
-             // Clean up if we allocated config.user_outdir
-             if (config.user_outdir && config.user_outdir != argv[arg_idx]) {
-                 // It's hard to track if it's from argv or malloc without a flag.
-                 // But we know if we used create_output_dir_name it was malloced.
-                 // Let's just rely on OS cleanup for main exit.
+             // Clean up if config.user_outdir was auto-generated (malloced)
+             if (config.user_outdir && !out_dir_alloc) {
+                 // Wait, logic above:
+                 // if user_outdir was NULL, we set it to out_dir (which was malloced).
+                 // out_dir_alloc was true.
+                 // If user_outdir was set (argv), out_dir was malloced/freed, config.user_outdir is argv.
+             }
+             // It is hard to track perfectly without a flag in config.
+             // But simpler: we check if config.user_outdir != argv value.
+             // But we iterated argv.
+             // Let's rely on the fact that if we allocated it, we assigned it.
+             // We can just check if we assigned it from out_dir.
+             // Re-implement clean exit logic:
+             if (config.user_outdir && out_dir_alloc && config.user_outdir == out_dir) {
+                 free(config.user_outdir);
              }
              return 0;
         }
@@ -275,10 +305,9 @@ int main(int argc, char *argv[]) {
     free(state.clmembflag);
     free(state.assignments);
 
-    // config.user_outdir might need free if we malloced it.
-    // If it came from argv, no free.
-    // If we want to be clean, we should track it.
-    // But for now, we leave it.
+    if (config.user_outdir && out_dir_alloc && config.user_outdir == out_dir) {
+         free(config.user_outdir);
+    }
 
     close_frameread();
 
