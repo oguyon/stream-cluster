@@ -80,7 +80,7 @@ void write_results(ClusterConfig *config, ClusterState *state) {
 
     if (!out_dir) return;
 
-    char out_path[1024];
+    char out_path[4096];
 
     // Write dcc.txt
     snprintf(out_path, sizeof(out_path), "%s/dcc.txt", out_dir);
