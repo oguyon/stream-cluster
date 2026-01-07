@@ -36,17 +36,21 @@ int main(int argc, char *argv[]) {
     // Check help
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            printf("Usage: %s <dcc_file> <dimensions> <output_file>\n", argv[0]);
+            printf("Usage: %s <dcc_file> <dimensions> <output_file> [options]\n", argv[0]);
             printf("Arguments:\n");
             printf("  <dcc_file>     Input distance matrix file (dcc.txt).\n");
             printf("  <dimensions>   Target dimensionality (N).\n");
             printf("  <output_file>  Output filename for coordinates.\n");
+            printf("Options:\n");
+            printf("  -temp <val>    Initial temperature (default 10.0)\n");
+            printf("  -rate <val>    Cooling rate (default 0.995)\n");
+            printf("  -iter <val>    Number of iterations (default 100000)\n");
             return 0;
         }
     }
 
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <dcc_file> <dimensions> <output_file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <dcc_file> <dimensions> <output_file> [options]\n", argv[0]);
         print_args_on_error(argc, argv);
         return 1;
     }
@@ -54,6 +58,28 @@ int main(int argc, char *argv[]) {
     char *input_file = argv[1];
     int dimensions = atoi(argv[2]);
     char *output_file = argv[3];
+
+    // Defaults
+    double T = 10.0;
+    double cooling_rate = 0.995;
+    int iterations = 100000;
+
+    // Parse options
+    for (int i = 4; i < argc; i++) {
+        if (strcmp(argv[i], "-temp") == 0) {
+            if (i + 1 < argc) {
+                T = atof(argv[++i]);
+            }
+        } else if (strcmp(argv[i], "-rate") == 0) {
+            if (i + 1 < argc) {
+                cooling_rate = atof(argv[++i]);
+            }
+        } else if (strcmp(argv[i], "-iter") == 0) {
+            if (i + 1 < argc) {
+                iterations = atoi(argv[++i]);
+            }
+        }
+    }
 
     if (dimensions < 1) {
         fprintf(stderr, "Invalid dimensions: %d\n", dimensions);
@@ -121,10 +147,6 @@ int main(int argc, char *argv[]) {
     }
 
     // Simulated Annealing
-    double T = 10.0;
-    double cooling_rate = 0.995;
-    int iterations = 100000;
-
     double E = 0.0;
     int pair_count = 0;
     for (int i=0; i<num_clusters; i++) {
