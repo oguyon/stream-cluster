@@ -555,7 +555,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     printf("Average fraction of clusters pruned per step:\n");
     for (int k = 0; k < state->max_steps_recorded; k++) {
         if (state->step_counts[k] > 0) {
-            printf("  Step %d: %.4f (n=%ld)\n", k, state->pruned_fraction_sum[k] / state->step_counts[k], state->step_counts[k]);
+            printf("  Step %d: %.4f (averaged over %ld frames)\n", k, state->pruned_fraction_sum[k] / state->step_counts[k], state->step_counts[k]);
         } else if (k > 0 && state->step_counts[k] == 0) {
              break;
         }
