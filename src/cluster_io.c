@@ -61,6 +61,8 @@ void print_usage(char *progname) {
     printf("  -progress      Print progress\n");
     printf("  -scandist      Measure distance stats\n");
     printf("  -gprob         Use geometrical probability\n");
+    printf("  -fmatcha <val> Set fmatch parameter a\n");
+    printf("  -fmatchb <val> Set fmatch parameter b\n");
     printf("  -pngout        Write output as PNG images");
     #ifndef USE_PNG
     printf(" [DISABLED]");
