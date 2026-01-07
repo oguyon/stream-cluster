@@ -249,6 +249,9 @@ int main(int argc, char *argv[]) {
     free(state.clmembflag);
     free(state.assignments);
 
+    if (state.pruned_fraction_sum) free(state.pruned_fraction_sum);
+    if (state.step_counts) free(state.step_counts);
+
     if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
 
     close_frameread();

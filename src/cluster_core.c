@@ -207,6 +207,10 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     state->assignments = (int *)malloc(actual_frames * sizeof(int));
     state->frame_infos = (FrameInfo *)calloc(actual_frames, sizeof(FrameInfo));
 
+    state->max_steps_recorded = config->maxnbclust;
+    state->pruned_fraction_sum = (double *)calloc(state->max_steps_recorded, sizeof(double));
+    state->step_counts = (long *)calloc(state->max_steps_recorded, sizeof(long));
+
     int *temp_indices = (int *)malloc(config->maxnbclust * sizeof(int));
     double *temp_dists = (double *)malloc(config->maxnbclust * sizeof(double));
     if (!temp_indices || !temp_dists) {
@@ -354,6 +358,16 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                         }
                     }
                     if (cj == -1) break;
+                }
+
+                // Track pruning stats
+                if (temp_count < state->max_steps_recorded && state->num_clusters > 0) {
+                    int pruned_cnt = 0;
+                    for(int pc=0; pc<state->num_clusters; pc++) {
+                        if(state->clmembflag[pc] == 0) pruned_cnt++;
+                    }
+                    state->pruned_fraction_sum[temp_count] += (double)pruned_cnt / state->num_clusters;
+                    state->step_counts[temp_count]++;
                 }
 
                 double dfc = get_dist(current_frame, &state->clusters[cj].anchor, state->clusters[cj].id, state->clusters[cj].prob, state->current_gprobs[cj], config, state);
@@ -536,6 +550,17 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     printf("Framedist calls: %ld\n", state->framedist_calls);
 
     if (ascii_out) fclose(ascii_out);
+
+    // Report pruning stats
+    printf("Average fraction of clusters pruned per step:\n");
+    for (int k = 0; k < state->max_steps_recorded; k++) {
+        if (state->step_counts[k] > 0) {
+            printf("  Step %d: %.4f (n=%ld)\n", k, state->pruned_fraction_sum[k] / state->step_counts[k], state->step_counts[k]);
+        } else if (k > 0 && state->step_counts[k] == 0) {
+             break;
+        }
+    }
+
     free(temp_indices);
     free(temp_dists);
     if (verbose_candidates) free(verbose_candidates);
