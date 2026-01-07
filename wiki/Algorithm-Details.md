@@ -14,12 +14,13 @@ The algorithm groups frames based on Euclidean distance. Each cluster `cj` is de
 
 For each frame `fi`:
 
-1.  **Initialization**: If `Ncl = 0`, create Cluster 0 using `fi` as anchor. Set `prob(c0) = 1.0`.
-2.  **Normalize Probabilities**: Normalize `prob(cj)` so they sum to 1.0.
-3.  **Rank Candidates**: Sort clusters by total probability.
+**Initialization**: If `Ncl = 0`, create Cluster 0 using `fi` as anchor. Set `prob(c0) = 1.0`.
+Then loop until all frames clustered:
+1.  **Normalize Probabilities**: Normalize `prob(cj)` so they sum to 1.0.
+2.  **Rank Candidates**: Sort clusters by total probability.
     - If `-gprob` is used, Rank = `prob(cj) * gprob(fi, cj)`.
     - Otherwise, Rank = `prob(cj)`.
-4.  **Check Candidates**: Iterate through ranked clusters:
+3.  **Check Candidates**: Iterate through ranked clusters:
     - Compute `dfc(fi, cj)`.
     - If `dfc < rlim`:
         - **Assign**: `fi` -> `cj`.
@@ -27,7 +28,7 @@ For each frame `fi`:
         - Update `gprob` history.
         - Proceed to next frame.
     - **Prune**: Use triangle inequality. If `|dcc(cj, cl) - dfc(fi, cj)| > rlim`, cluster `cl` cannot contain `fi`.
-5.  **Create New Cluster**: If no existing cluster matches:
+4.  **Create New Cluster**: If no existing cluster matches:
     - Create new cluster with `fi` as anchor.
     - Initialize `prob = 1.0`.
     - Compute `dcc` to all existing clusters.
