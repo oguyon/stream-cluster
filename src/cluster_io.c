@@ -52,17 +52,17 @@ void print_usage(char *progname) {
     #endif
     printf(").\n");
     printf("Options:\n");
-    printf("  -dprob <val>   Delta probability\n");
-    printf("  -maxcl <val>   Max number of clusters\n");
-    printf("  -maxim <val>   Max number of frames\n");
+    printf("  -dprob <val>   Delta probability (default: 0.01)\n");
+    printf("  -maxcl <val>   Max number of clusters (default: 1000)\n");
+    printf("  -maxim <val>   Max number of frames (default: 100000)\n");
     printf("  -avg           Compute average frame per cluster\n");
     printf("  -distall       Save all computed distances\n");
-    printf("  -outdir <name> Specify output directory\n");
+    printf("  -outdir <name> Specify output directory (default: <filename>.clusterdat)\n");
     printf("  -progress      Print progress\n");
     printf("  -scandist      Measure distance stats\n");
     printf("  -gprob         Use geometrical probability\n");
-    printf("  -fmatcha <val> Set fmatch parameter a\n");
-    printf("  -fmatchb <val> Set fmatch parameter b\n");
+    printf("  -fmatcha <val> Set fmatch parameter a (default: 2.0)\n");
+    printf("  -fmatchb <val> Set fmatch parameter b (default: 0.5)\n");
     printf("  -pngout        Write output as PNG images");
     #ifndef USE_PNG
     printf(" [DISABLED]");
