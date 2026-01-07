@@ -143,7 +143,7 @@ static int init_mp4(char *filename) {
     }
 
     AVCodecParameters *codecpar = fmt_ctx->streams[video_stream_idx]->codecpar;
-    AVCodec *codec = avcodec_find_decoder(codecpar->codec_id);
+    const AVCodec *codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec) {
         fprintf(stderr, "Codec not found\n");
         return -1;
@@ -338,10 +338,7 @@ Frame* getframe_at(long index) {
 
         uint8_t *rgb_data[4] = {NULL};
         int rgb_linesize[4] = {0};
-        // av_image_alloc(rgb_data, rgb_linesize, dec_ctx->width, dec_ctx->height, AV_PIX_FMT_RGB24, 1); // Need to include libavutil/imgutils.h for this?
-        // Let's alloc manually to avoid extra include dependency if possible, or assume included via avcodec.
-        // It's in libavutil/imgutils.h.
-        // For simplicity, let's malloc.
+
         rgb_data[0] = (uint8_t*)malloc(dec_ctx->width * dec_ctx->height * 3);
         rgb_linesize[0] = dec_ctx->width * 3;
 
@@ -357,7 +354,7 @@ Frame* getframe_at(long index) {
     }
     #endif
     #ifdef USE_CFITSIO
-    else {
+    else if (fptr) { // Check if fptr is valid, implying FITS mode
         int status = 0;
         long fpixel[3] = {1, 1, index + 1};
         if (fits_read_pix(fptr, TDOUBLE, fpixel, nelements, NULL, frame_struct->data, NULL, &status)) {
