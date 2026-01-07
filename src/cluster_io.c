@@ -305,6 +305,16 @@ void write_results(ClusterConfig *config, ClusterState *state) {
         double avg_dist = (state->total_frames_processed > 0) ? (double)state->framedist_calls / state->total_frames_processed : 0.0;
         fprintf(clustered_out, "# Avg Dist/Frame %.2f\n", avg_dist);
 
+        if (state->pruned_fraction_sum && state->step_counts) {
+            for (int k = 0; k < state->max_steps_recorded; k++) {
+                if (state->step_counts[k] > 0) {
+                    fprintf(clustered_out, "# Pruning Step %d: %.4f\n", k, state->pruned_fraction_sum[k] / state->step_counts[k]);
+                } else if (k > 0 && state->step_counts[k] == 0) {
+                    break;
+                }
+            }
+        }
+
         int next_new_cluster = 0;
         for (long i = 0; i < state->total_frames_processed; i++) {
             int assigned = state->assignments[i];

@@ -49,6 +49,9 @@ typedef struct {
     FrameInfo *frame_infos;
     long total_frames_processed;
     FILE *distall_out;
+    double *pruned_fraction_sum;
+    long *step_counts;
+    int max_steps_recorded;
 } ClusterState;
 
 // Candidate structure for sorting
