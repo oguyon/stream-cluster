@@ -212,6 +212,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     state->max_steps_recorded = config->maxnbclust;
     state->pruned_fraction_sum = (double *)calloc(state->max_steps_recorded, sizeof(double));
     state->step_counts = (long *)calloc(state->max_steps_recorded, sizeof(long));
+    state->transition_matrix = (long *)calloc(config->maxnbclust * config->maxnbclust, sizeof(long));
 
     int *temp_indices = (int *)malloc(config->maxnbclust * sizeof(int));
     double *temp_dists = (double *)malloc(config->maxnbclust * sizeof(double));
@@ -255,6 +256,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
+    int prev_assigned_cluster = -1;
     Frame *current_frame;
     while ((current_frame = getframe()) != NULL) {
         if (stop_requested) {
@@ -513,6 +515,12 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                 free_frame(current_frame);
             }
         }
+
+        // Update transition matrix
+        if (state->total_frames_processed > 0 && prev_assigned_cluster != -1) {
+            state->transition_matrix[prev_assigned_cluster * config->maxnbclust + assigned_cluster]++;
+        }
+        prev_assigned_cluster = assigned_cluster;
 
         state->assignments[state->total_frames_processed] = assigned_cluster;
         if (ascii_out) fprintf(ascii_out, "%ld %d\n", state->total_frames_processed, assigned_cluster);
