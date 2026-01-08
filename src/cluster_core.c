@@ -199,7 +199,7 @@ void run_scandist(ClusterConfig *config, char *out_dir) {
     free(distances);
 }
 
-double get_min_distance_d34(double d14, double d24, double d12, double d13, double d23) {
+double calc_min_dist_4pt(double d14, double d24, double d12, double d13, double d23) {
     if (d12 < 1e-9) return fabs(d14 - d13);
 
     double x3 = (d13*d13 + d12*d12 - d23*d23) / (2.0 * d12);
@@ -466,7 +466,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                                          state->dccarray[k * config->maxnbclust + cprev] = d_cprev_ck;
                                     }
 
-                                    double min_d = get_min_distance_d34(dfc, d_m_cprev, d_ci_cprev, d_ci_ck, d_cprev_ck);
+                                    double min_d = calc_min_dist_4pt(dfc, d_m_cprev, d_ci_cprev, d_ci_ck, d_cprev_ck);
                                     if (min_d > config->rlim) {
                                         state->clmembflag[k] = 0;
                                         state->clusters_pruned++;
@@ -604,7 +604,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                                  state->dccarray[k * config->maxnbclust + cprev] = d_cprev_ck;
                             }
 
-                            double min_d = get_min_distance_d34(dfc, d_m_cprev, d_ci_cprev, d_ci_ck, d_cprev_ck);
+                            double min_d = calc_min_dist_4pt(dfc, d_m_cprev, d_ci_cprev, d_ci_ck, d_cprev_ck);
                             if (min_d > config->rlim) {
                                 state->clmembflag[k] = 0;
                                 state->clusters_pruned++;
