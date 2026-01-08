@@ -5,3 +5,5 @@ test/
 *.fits
 output.txt
 benchmark/
+*.clusterdat/
+*.clusterdat/
