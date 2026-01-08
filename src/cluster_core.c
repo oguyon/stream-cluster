@@ -199,6 +199,20 @@ void run_scandist(ClusterConfig *config, char *out_dir) {
     free(distances);
 }
 
+double get_min_distance_d34(double d14, double d24, double d12, double d13, double d23) {
+    if (d12 < 1e-9) return fabs(d14 - d13);
+
+    double x3 = (d13*d13 + d12*d12 - d23*d23) / (2.0 * d12);
+    double y3_sq = d13*d13 - x3*x3;
+    double y3 = (y3_sq > 0.0) ? sqrt(y3_sq) : 0.0;
+
+    double x4 = (d14*d14 + d12*d12 - d24*d24) / (2.0 * d12);
+    double y4_sq = d14*d14 - x4*x4;
+    double y4 = (y4_sq > 0.0) ? sqrt(y4_sq) : 0.0;
+
+    return sqrt((x3 - x4)*(x3 - x4) + (y3 - y4)*(y3 - y4));
+}
+
 int get_prediction_candidates(ClusterState *state, ClusterConfig *config, int *candidates, int max_candidates) {
     long total = state->total_frames_processed;
     int len = config->pred_len;
@@ -421,6 +435,46 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                             if (dfc - dcc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
                         }
 
+                        // TE4 Pruning
+                        if (config->te4_mode && temp_count > 1) {
+                            for (int p = 0; p < temp_count - 1; p++) {
+                                int cprev = temp_indices[p];
+                                double d_m_cprev = temp_dists[p];
+                                double d_ci_cprev = state->dccarray[cj * config->maxnbclust + cprev];
+
+                                if (d_ci_cprev < 0) {
+                                     d_ci_cprev = get_dist(&state->clusters[cj].anchor, &state->clusters[cprev].anchor, -1, -1.0, -1.0, config, state);
+                                     state->dccarray[cj * config->maxnbclust + cprev] = d_ci_cprev;
+                                     state->dccarray[cprev * config->maxnbclust + cj] = d_ci_cprev;
+                                }
+
+                                for (int k = 0; k < state->num_clusters; k++) {
+                                    if (!state->clmembflag[k]) continue;
+                                    if (k == cj || k == cprev) continue;
+
+                                    double d_ci_ck = state->dccarray[cj * config->maxnbclust + k];
+                                    if (d_ci_ck < 0) {
+                                         d_ci_ck = get_dist(&state->clusters[cj].anchor, &state->clusters[k].anchor, -1, -1.0, -1.0, config, state);
+                                         state->dccarray[cj * config->maxnbclust + k] = d_ci_ck;
+                                         state->dccarray[k * config->maxnbclust + cj] = d_ci_ck;
+                                    }
+
+                                    double d_cprev_ck = state->dccarray[cprev * config->maxnbclust + k];
+                                    if (d_cprev_ck < 0) {
+                                         d_cprev_ck = get_dist(&state->clusters[cprev].anchor, &state->clusters[k].anchor, -1, -1.0, -1.0, config, state);
+                                         state->dccarray[cprev * config->maxnbclust + k] = d_cprev_ck;
+                                         state->dccarray[k * config->maxnbclust + cprev] = d_cprev_ck;
+                                    }
+
+                                    double min_d = get_min_distance_d34(dfc, d_m_cprev, d_ci_cprev, d_ci_ck, d_cprev_ck);
+                                    if (min_d > config->rlim) {
+                                        state->clmembflag[k] = 0;
+                                        state->clusters_pruned++;
+                                    }
+                                }
+                            }
+                        }
+
                         state->clmembflag[cj] = 0;
                     }
                     free(pred_candidates);
@@ -517,6 +571,46 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
 
                     if (dcc - dfc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
                     if (dfc - dcc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
+                }
+
+                // TE4 Pruning
+                if (config->te4_mode && temp_count > 1) {
+                    for (int p = 0; p < temp_count - 1; p++) {
+                        int cprev = temp_indices[p];
+                        double d_m_cprev = temp_dists[p];
+                        double d_ci_cprev = state->dccarray[cj * config->maxnbclust + cprev];
+
+                        if (d_ci_cprev < 0) {
+                             d_ci_cprev = get_dist(&state->clusters[cj].anchor, &state->clusters[cprev].anchor, -1, -1.0, -1.0, config, state);
+                             state->dccarray[cj * config->maxnbclust + cprev] = d_ci_cprev;
+                             state->dccarray[cprev * config->maxnbclust + cj] = d_ci_cprev;
+                        }
+
+                        for (int k = 0; k < state->num_clusters; k++) {
+                            if (!state->clmembflag[k]) continue;
+                            if (k == cj || k == cprev) continue;
+
+                            double d_ci_ck = state->dccarray[cj * config->maxnbclust + k];
+                            if (d_ci_ck < 0) {
+                                 d_ci_ck = get_dist(&state->clusters[cj].anchor, &state->clusters[k].anchor, -1, -1.0, -1.0, config, state);
+                                 state->dccarray[cj * config->maxnbclust + k] = d_ci_ck;
+                                 state->dccarray[k * config->maxnbclust + cj] = d_ci_ck;
+                            }
+
+                            double d_cprev_ck = state->dccarray[cprev * config->maxnbclust + k];
+                            if (d_cprev_ck < 0) {
+                                 d_cprev_ck = get_dist(&state->clusters[cprev].anchor, &state->clusters[k].anchor, -1, -1.0, -1.0, config, state);
+                                 state->dccarray[cprev * config->maxnbclust + k] = d_cprev_ck;
+                                 state->dccarray[k * config->maxnbclust + cprev] = d_cprev_ck;
+                            }
+
+                            double min_d = get_min_distance_d34(dfc, d_m_cprev, d_ci_cprev, d_ci_ck, d_cprev_ck);
+                            if (min_d > config->rlim) {
+                                state->clmembflag[k] = 0;
+                                state->clusters_pruned++;
+                            }
+                        }
+                    }
                 }
 
                 if (state->clmembflag[cj]) {

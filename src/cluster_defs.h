@@ -30,6 +30,7 @@ typedef struct {
     int pred_len;
     int pred_h;
     int pred_n;
+    int te4_mode;
 } ClusterConfig;
 
 // VisitorList structure
