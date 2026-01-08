@@ -17,8 +17,6 @@ double framedist(Frame *a, Frame *b);
 #define ANSI_COLOR_BLACK   "\x1b[30m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
-#define MAX_GPROB_VISITORS 1000
-
 int compare_candidates(const void *a, const void *b) {
     Candidate *ca = (Candidate *)a;
     Candidate *cb = (Candidate *)b;
@@ -201,6 +199,63 @@ void run_scandist(ClusterConfig *config, char *out_dir) {
     free(distances);
 }
 
+int get_prediction_candidates(ClusterState *state, ClusterConfig *config, int *candidates, int max_candidates) {
+    long total = state->total_frames_processed;
+    int len = config->pred_len;
+    int h = config->pred_h;
+
+    if (total < len) return 0;
+
+    long search_limit = total - len;
+    long search_start = (total > h) ? total - h : 0;
+    if (search_start > search_limit) search_start = search_limit;
+
+    int *pattern = &state->assignments[total - len];
+
+    int *counts = (int *)calloc(state->num_clusters, sizeof(int));
+    if (!counts) return 0;
+
+    for (long i = search_start; i < search_limit; i++) {
+        if (state->assignments[i] == pattern[0]) {
+             if (memcmp(&state->assignments[i], pattern, len * sizeof(int)) == 0) {
+                 int next_cluster = state->assignments[i + len];
+                 if (next_cluster >= 0 && next_cluster < state->num_clusters) {
+                     counts[next_cluster]++;
+                 }
+             }
+        }
+    }
+
+    int count_non_zero = 0;
+    for(int i=0; i<state->num_clusters; i++) if (counts[i] > 0) count_non_zero++;
+
+    if (count_non_zero == 0) {
+        free(counts);
+        return 0;
+    }
+
+    Candidate *cand_list = (Candidate *)malloc(count_non_zero * sizeof(Candidate));
+    int idx = 0;
+    for(int i=0; i<state->num_clusters; i++) {
+        if (counts[i] > 0) {
+            cand_list[idx].id = i;
+            cand_list[idx].p = (double)counts[i];
+            idx++;
+        }
+    }
+
+    qsort(cand_list, count_non_zero, sizeof(Candidate), compare_candidates);
+
+    int n_out = (count_non_zero < max_candidates) ? count_non_zero : max_candidates;
+    for(int i=0; i<n_out; i++) {
+        candidates[i] = cand_list[i].id;
+    }
+
+    free(cand_list);
+    free(counts);
+    return n_out;
+}
+
 void run_clustering(ClusterConfig *config, ClusterState *state) {
     long actual_frames = get_num_frames();
     if (actual_frames > config->maxnbfr) actual_frames = config->maxnbfr;
@@ -316,7 +371,63 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
             int k = 0;
             int found = 0;
 
-            while (1) {
+            if (config->pred_mode && state->total_frames_processed >= config->pred_len) {
+                int *pred_candidates = (int*)malloc(config->pred_n * sizeof(int));
+                if (pred_candidates) {
+                    int num_preds = get_prediction_candidates(state, config, pred_candidates, config->pred_n);
+
+                    for (int p = 0; p < num_preds; p++) {
+                        int cj = pred_candidates[p];
+                        if (!state->clmembflag[cj]) continue;
+
+                        if (temp_count < state->max_steps_recorded && state->num_clusters > 0) {
+                             int pruned_cnt = 0;
+                             for(int pc=0; pc<state->num_clusters; pc++) if(state->clmembflag[pc] == 0) pruned_cnt++;
+                             state->pruned_fraction_sum[temp_count] += (double)pruned_cnt / state->num_clusters;
+                             state->step_counts[temp_count]++;
+                        }
+
+                        double dfc = get_dist(current_frame, &state->clusters[cj].anchor, state->clusters[cj].id, state->clusters[cj].prob, state->current_gprobs[cj], config, state);
+
+                        if (temp_count < config->maxnbclust) {
+                            temp_indices[temp_count] = cj;
+                            temp_dists[temp_count] = dfc;
+                            temp_count++;
+                        }
+
+                        add_visitor(&state->cluster_visitors[cj], state->total_frames_processed);
+
+                        if (dfc < config->rlim) {
+                            assigned_cluster = cj;
+                            state->clusters[cj].prob += config->deltaprob;
+                            found = 1;
+                            if (config->verbose_level >= 2) {
+                                printf(ANSI_COLOR_GREEN "  [VV] Frame %ld assigned to Cluster %d (Prediction)\n" ANSI_COLOR_RESET, state->total_frames_processed, assigned_cluster);
+                            }
+                            break;
+                        }
+
+                        for (int cl = 0; cl < state->num_clusters; cl++) {
+                            if (state->clmembflag[cl] == 0) continue;
+
+                            double dcc = state->dccarray[cj * config->maxnbclust + cl];
+                            if (dcc < 0) {
+                                dcc = get_dist(&state->clusters[cj].anchor, &state->clusters[cl].anchor, -1, -1.0, -1.0, config, state);
+                                state->dccarray[cj * config->maxnbclust + cl] = dcc;
+                                state->dccarray[cl * config->maxnbclust + cj] = dcc;
+                            }
+
+                            if (dcc - dfc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
+                            if (dfc - dcc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
+                        }
+
+                        state->clmembflag[cj] = 0;
+                    }
+                    free(pred_candidates);
+                }
+            }
+
+            while (!found) {
                 if (config->verbose_level >= 2 && verbose_candidates) {
                     int vcount = 0;
                     for (int i = 0; i < state->num_clusters; i++) {
@@ -426,8 +537,8 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                     }
 
                     int start_idx = 0;
-                    if (state->cluster_visitors[cj].count > MAX_GPROB_VISITORS) {
-                        start_idx = state->cluster_visitors[cj].count - MAX_GPROB_VISITORS;
+                    if (state->cluster_visitors[cj].count > config->max_gprob_visitors) {
+                        start_idx = state->cluster_visitors[cj].count - config->max_gprob_visitors;
                     }
                     for (int i = start_idx; i < state->cluster_visitors[cj].count; i++) {
                         int k_idx = state->cluster_visitors[cj].frames[i];

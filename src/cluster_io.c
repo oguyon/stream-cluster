@@ -63,6 +63,8 @@ void print_usage(char *progname) {
     printf("  -gprob         Use geometrical probability\n");
     printf("  -fmatcha <val> Set fmatch parameter a (default: 2.0)\n");
     printf("  -fmatchb <val> Set fmatch parameter b (default: 0.5)\n");
+    printf("  -maxvis <val>  Max visitors for gprob history (default: 1000)\n");
+    printf("  -pred[l,h,n]   Prediction with pattern detection (default: 10,1000,2)\n");
     printf("  -pngout        Write output as PNG images");
     #ifndef USE_PNG
     printf(" [DISABLED]");
