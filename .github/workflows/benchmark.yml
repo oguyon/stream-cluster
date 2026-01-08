@@ -1,0 +1,30 @@
+name: Run Benchmarks
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libcfitsio-dev libpng-dev libavformat-dev libavcodec-dev libswscale-dev libavutil-dev pkg-config
+
+    - name: Run Benchmarks
+      run: |
+        chmod +x benchmarks.bash
+        ./benchmarks.bash
+
+    - name: Upload Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark/
