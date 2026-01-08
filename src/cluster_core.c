@@ -106,8 +106,8 @@ void run_scandist(ClusterConfig *config, char *out_dir) {
 
     Frame *prev = getframe();
     if (!prev) {
-         free(distances);
-         return;
+        free(distances);
+        return;
     }
 
     FILE *scan_out = NULL;
@@ -116,7 +116,7 @@ void run_scandist(ClusterConfig *config, char *out_dir) {
         snprintf(scan_path, sizeof(scan_path), "%s/dist-scan.txt", out_dir);
         scan_out = fopen(scan_path, "w");
         if (scan_out) {
-             fprintf(scan_out, "# Frame1 Frame2 Distance\n");
+            fprintf(scan_out, "# Frame1 Frame2 Distance\n");
         }
     }
 
@@ -169,17 +169,17 @@ void run_scandist(ClusterConfig *config, char *out_dir) {
         int p20_i = (int)p20_idx;
         double p20_f = p20_idx - p20_i;
         if (p20_i + 1 < count)
-             p20_val = distances[p20_i] * (1.0 - p20_f) + distances[p20_i + 1] * p20_f;
+            p20_val = distances[p20_i] * (1.0 - p20_f) + distances[p20_i + 1] * p20_f;
         else
-             p20_val = distances[p20_i];
+            p20_val = distances[p20_i];
 
         double p80_idx = (count - 1) * 0.8;
         int p80_i = (int)p80_idx;
         double p80_f = p80_idx - p80_i;
         if (p80_i + 1 < count)
-             p80_val = distances[p80_i] * (1.0 - p80_f) + distances[p80_i + 1] * p80_f;
+            p80_val = distances[p80_i] * (1.0 - p80_f) + distances[p80_i + 1] * p80_f;
         else
-             p80_val = distances[p80_i];
+            p80_val = distances[p80_i];
 
         if (config->scandist_mode) {
             printf("Distance statistics (%ld intervals):\n", count);
@@ -217,12 +217,12 @@ int get_prediction_candidates(ClusterState *state, ClusterConfig *config, int *c
 
     for (long i = search_start; i < search_limit; i++) {
         if (state->assignments[i] == pattern[0]) {
-             if (memcmp(&state->assignments[i], pattern, len * sizeof(int)) == 0) {
-                 int next_cluster = state->assignments[i + len];
-                 if (next_cluster >= 0 && next_cluster < state->num_clusters) {
-                     counts[next_cluster]++;
-                 }
-             }
+            if (memcmp(&state->assignments[i], pattern, len * sizeof(int)) == 0) {
+                int next_cluster = state->assignments[i + len];
+                if (next_cluster >= 0 && next_cluster < state->num_clusters) {
+                    counts[next_cluster]++;
+                }
+            }
         }
     }
 
@@ -255,6 +255,64 @@ int get_prediction_candidates(ClusterState *state, ClusterConfig *config, int *c
     free(counts);
     return n_out;
 }
+
+
+/**
+ * Calculates the minimum distance d34 between Point 3 and Point 4.
+ * @param d12 Distance between Point 1 and Point 2 (The shared base)
+ * @param d13 Distance between Point 1 and Point 3
+ * @param d14 Distance between Point 1 and Point 4
+ * @param d23 Distance between Point 2 and Point 3
+ * @param d24 Distance between Point 2 and Point 4
+ * @return The minimum distance between Point 3 and Point 4. Returns -1.0 if the configuration is invalid.
+ */
+double get_min_distance_d34(double d12, double d13, double d14, double d23, double d24) {
+    // 1. Calculate squared distances for efficiency
+    double d12_sq = d12 * d12;
+    double d13_sq = d13 * d13;
+    double d14_sq = d14 * d14;
+    double d23_sq = d23 * d23;
+    double d24_sq = d24 * d24;
+
+    // 2. Calculate the "Cosine Numerator" terms (K)
+    // K represents 2 * d12 * side * cos(theta) derived from Law of Cosines
+    double K_123 = d12_sq + d13_sq - d23_sq;
+    double K_124 = d12_sq + d14_sq - d24_sq;
+
+    // 3. Calculate the Heron's Polynomial terms (H)
+    // H represents (2 * Area * 2)^2. If H < 0, the triangle is impossible.
+    double H_123 = 4.0 * d12_sq * d13_sq - (K_123 * K_123);
+    double H_124 = 4.0 * d12_sq * d14_sq - (K_124 * K_124);
+
+    // Validate geometry: H terms must be non-negative
+    if (H_123 < 0 || H_124 < 0) {
+        printf("Error: Invalid triangle geometry provided.\n");
+        return -1.0;
+    }
+
+    // 4. Calculate the squared distance x^2
+    // To find the MINIMUM distance (points on same side), we ADD the sqrt(H*H) term inside the bracket
+    // because the standard formula is d13^2 + d14^2 - 2*d13*d14*cos(a-b).
+    // The expansion of cos(a-b) is cos*cos + sin*sin.
+    double cross_term = (K_123 * K_124) + sqrt(H_123 * H_124);
+
+    double x_sq = d13_sq + d14_sq - (cross_term / (2.0 * d12_sq));
+
+    // Handle floating point epsilon errors slightly below zero
+    if (x_sq < 0 && x_sq > -1e-9) x_sq = 0.0;
+
+    if (x_sq < 0) {
+        printf("Error: Calculated squared distance is negative (impossible).\n");
+        return -1.0;
+    }
+
+    return sqrt(x_sq);
+}
+
+
+
+
+
 
 void run_clustering(ClusterConfig *config, ClusterState *state) {
     long actual_frames = get_num_frames();
@@ -381,10 +439,10 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                         if (!state->clmembflag[cj]) continue;
 
                         if (temp_count < state->max_steps_recorded && state->num_clusters > 0) {
-                             int pruned_cnt = 0;
-                             for(int pc=0; pc<state->num_clusters; pc++) if(state->clmembflag[pc] == 0) pruned_cnt++;
-                             state->pruned_fraction_sum[temp_count] += (double)pruned_cnt / state->num_clusters;
-                             state->step_counts[temp_count]++;
+                            int pruned_cnt = 0;
+                            for(int pc=0; pc<state->num_clusters; pc++) if(state->clmembflag[pc] == 0) pruned_cnt++;
+                            state->pruned_fraction_sum[temp_count] += (double)pruned_cnt / state->num_clusters;
+                            state->step_counts[temp_count]++;
                         }
 
                         double dfc = get_dist(current_frame, &state->clusters[cj].anchor, state->clusters[cj].id, state->clusters[cj].prob, state->current_gprobs[cj], config, state);
@@ -417,8 +475,14 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                                 state->dccarray[cl * config->maxnbclust + cj] = dcc;
                             }
 
-                            if (dcc - dfc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
-                            if (dfc - dcc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
+                            if (dcc - dfc > config->rlim) {
+                                state->clmembflag[cl] = 0;
+                                state->clusters_pruned++;
+                            }
+                            if (dfc - dcc > config->rlim) {
+                                state->clmembflag[cl] = 0;
+                                state->clusters_pruned++;
+                            }
                         }
 
                         state->clmembflag[cj] = 0;
@@ -515,8 +579,14 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                         state->dccarray[cl * config->maxnbclust + cj] = dcc;
                     }
 
-                    if (dcc - dfc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
-                    if (dfc - dcc > config->rlim) { state->clmembflag[cl] = 0; state->clusters_pruned++; }
+                    if (dcc - dfc > config->rlim) {
+                        state->clmembflag[cl] = 0;
+                        state->clusters_pruned++;
+                    }
+                    if (dfc - dcc > config->rlim) {
+                        state->clmembflag[cl] = 0;
+                        state->clusters_pruned++;
+                    }
                 }
 
                 if (state->clmembflag[cj]) {
@@ -602,7 +672,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                     state->dccarray[state->num_clusters * config->maxnbclust + state->num_clusters] = 0.0;
 
                     if (config->verbose_level >= 2) {
-                         printf(ANSI_COLOR_GREEN "  [VV] Frame %5ld assigned to Cluster %4d\n" ANSI_COLOR_RESET, state->total_frames_processed, assigned_cluster);
+                        printf(ANSI_COLOR_GREEN "  [VV] Frame %5ld assigned to Cluster %4d\n" ANSI_COLOR_RESET, state->total_frames_processed, assigned_cluster);
                         printf(ANSI_COLOR_ORANGE "  [VV] Frame %5ld created new Cluster %4d\n" ANSI_COLOR_RESET, state->total_frames_processed, state->num_clusters);
                     }
 
@@ -682,7 +752,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
         if (state->step_counts[k] > 0) {
             printf("  Step %d: %.4f (averaged over %ld frames)\n", k, state->pruned_fraction_sum[k] / state->step_counts[k], state->step_counts[k]);
         } else if (k > 0 && state->step_counts[k] == 0) {
-             break;
+            break;
         }
     }
 
