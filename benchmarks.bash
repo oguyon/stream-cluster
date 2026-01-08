@@ -15,7 +15,7 @@ DATA_FILE="benchmark/benchmark_data.txt"
 
 # Generate Data: 2000 points, repeated 5 times = 10000 frames
 echo "Generating synthetic data (10,000 frames)..."
-./build/image-cluster-mktxtseq 2000 $DATA_FILE 3Dwalk -repeat 5 -noise 0.5
+./build/image-cluster-mktxtseq 2000 $DATA_FILE 2Dspiral -repeat 5 -noise 0.5
 
 # Function to run benchmark
 run_bench() {
@@ -24,8 +24,8 @@ run_bench() {
     LOG_FILE="benchmark/result_${MODE_NAME}.txt"
     echo "Running $MODE_NAME benchmark..."
 
-    # Use 1.5 radius limit as per benchmarks docs
-    ./build/image-cluster 1.5 $DATA_FILE -dprob 0.05 $ARGS > $LOG_FILE
+    # Use 0.1 radius limit
+    ./build/image-cluster 0.1 $DATA_FILE -dprob 0.05 $ARGS > $LOG_FILE
 
     TIME=$(grep "Processing time:" $LOG_FILE | awk '{print $3}')
     DISTS=$(grep "Framedist calls:" $LOG_FILE | awk '{print $3}')
