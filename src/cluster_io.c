@@ -97,6 +97,21 @@ void write_results(ClusterConfig *config, ClusterState *state) {
         fclose(dcc_out);
     }
 
+    // Write Transition Matrix
+    if (state->transition_matrix) {
+        snprintf(out_path, sizeof(out_path), "%s/transition_matrix.txt", out_dir);
+        FILE *tm_out = fopen(out_path, "w");
+        if (tm_out) {
+            for (int i = 0; i < state->num_clusters; i++) {
+                for (int j = 0; j < state->num_clusters; j++) {
+                    fprintf(tm_out, "%ld ", state->transition_matrix[i * config->maxnbclust + j]);
+                }
+                fprintf(tm_out, "\n");
+            }
+            fclose(tm_out);
+        }
+    }
+
     // Write Anchors
     long width = get_frame_width();
     long height = get_frame_height();

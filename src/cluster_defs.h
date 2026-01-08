@@ -52,6 +52,7 @@ typedef struct {
     double *pruned_fraction_sum;
     long *step_counts;
     int max_steps_recorded;
+    long *transition_matrix;
 } ClusterState;
 
 // Candidate structure for sorting

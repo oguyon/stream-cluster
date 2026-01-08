@@ -252,6 +252,7 @@ int main(int argc, char *argv[]) {
 
     if (state.pruned_fraction_sum) free(state.pruned_fraction_sum);
     if (state.step_counts) free(state.step_counts);
+    if (state.transition_matrix) free(state.transition_matrix);
 
     if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
 
