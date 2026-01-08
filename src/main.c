@@ -39,7 +39,11 @@ int main(int argc, char *argv[]) {
     config.maxnbfr = 100000;
     config.fmatch_a = 2.0;
     config.fmatch_b = 0.5;
+    config.max_gprob_visitors = 1000;
     config.progress_mode = 1;
+    config.pred_len = 10;
+    config.pred_h = 1000;
+    config.pred_n = 2;
 
     // First pass: Detect -scandist
     for (int i = 1; i < argc; i++) {
@@ -110,6 +114,17 @@ int main(int argc, char *argv[]) {
             config.fmatch_a = atof(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-fmatchb") == 0) {
             config.fmatch_b = atof(argv[++arg_idx]);
+        } else if (strcmp(argv[arg_idx], "-maxvis") == 0) {
+            config.max_gprob_visitors = atoi(argv[++arg_idx]);
+        } else if (strncmp(argv[arg_idx], "-pred", 5) == 0) {
+            config.pred_mode = 1;
+            char *params = argv[arg_idx] + 5;
+            if (*params == '[') {
+                params++; // Skip [
+                char *end = strchr(params, ']');
+                if (end) *end = '\0';
+                sscanf(params, "%d,%d,%d", &config.pred_len, &config.pred_h, &config.pred_n);
+            }
         } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
             // Already handled
         } else if (argv[arg_idx][0] == '-') {

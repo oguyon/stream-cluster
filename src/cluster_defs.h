@@ -25,6 +25,11 @@ typedef struct {
     int pngout_mode; // Added pngout flag
     double fmatch_a;
     double fmatch_b;
+    int max_gprob_visitors;
+    int pred_mode;
+    int pred_len;
+    int pred_h;
+    int pred_n;
 } ClusterConfig;
 
 // VisitorList structure

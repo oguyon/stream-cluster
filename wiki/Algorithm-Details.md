@@ -76,3 +76,40 @@ The total `gmatch(m, k)` is the product of `fmatch(dr)` for all shared clusters.
         - Update: `gprob(m, target) *= gmatch(m, k)`.
 
 Clusters with high `gprob` are prioritized in the candidate list, reducing the number of expensive distance calculations (`framedist` calls) needed to find the correct cluster.
+
+## Prediction with Pattern Detection (Time Series)
+
+For time-series data or video streams where cluster transitions often follow a pattern, the `-pred[len,h,n]` option allows the algorithm to "predict" the next cluster based on recent history.
+
+### Mechanism
+
+The algorithm uses the sequence of recent cluster assignments to find similar contexts in the past:
+
+1.  **Pattern Identification**: It identifies the sequence of cluster indices assigned to the last `len` frames (default: 10).
+2.  **History Scan**: It scans the assignments of the last `h` frames (default: 1000) to find previous occurrences of this sequence.
+3.  **Prediction**: For every match found, it looks at the *following* cluster assignment. These "next clusters" are collected and ranked by frequency.
+4.  **Priority Check**: The top `n` (default: 2) most frequent next clusters are computed and checked **first**, bypassing the standard probability ranking.
+
+If one of these predicted clusters is a match (`dist < rlim`), the frame is assigned immediately. If not, the algorithm falls back to the standard probability-based ranking (excluding the candidates that were already checked and rejected).
+
+### Parameters
+
+- `len`: Length of the sequence pattern.
+- `h`: History horizon (how far back to search).
+- `n`: Number of predicted candidates to test.
+
+### Example
+
+Assume 16 frames have been clustered with indices:
+`0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 2, 2, 0, 1, 2, 0`
+
+We are processing **Frame #16** (the 17th frame) with option `-pred[2,12,1]`.
+- **Current Pattern (`len=2`)**: The last two assignments are `2, 0`.
+- **History Scan (`h=12`)**: We look at the last 12 frames (indices 4 to 15). The sequence `2, 0` occurred at:
+    - Frames 5, 6 (followed by **1** at frame 7).
+    - Frames 8, 9 (followed by **2** at frame 10).
+    - Frames 11, 12 (followed by **1** at frame 13).
+- **Prediction**: Cluster **1** occurred twice. Cluster **2** occurred once.
+- **Action**: The algorithm tests Cluster **1** first.
+    - If Frame #16 belongs to Cluster 1, it is assigned immediately.
+    - If not, it proceeds to standard ranking (checking Cluster 2 next if probability suggests, or others).

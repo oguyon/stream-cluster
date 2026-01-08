@@ -63,6 +63,8 @@ void print_usage(char *progname) {
     printf("  -gprob         Use geometrical probability\n");
     printf("  -fmatcha <val> Set fmatch parameter a (default: 2.0)\n");
     printf("  -fmatchb <val> Set fmatch parameter b (default: 0.5)\n");
+    printf("  -maxvis <val>  Max visitors for gprob history (default: 1000)\n");
+    printf("  -pred[l,h,n]   Prediction with pattern detection (default: 10,1000,2)\n");
     printf("  -pngout        Write output as PNG images");
     #ifndef USE_PNG
     printf(" [DISABLED]");
@@ -104,9 +106,11 @@ void write_results(ClusterConfig *config, ClusterState *state) {
         if (tm_out) {
             for (int i = 0; i < state->num_clusters; i++) {
                 for (int j = 0; j < state->num_clusters; j++) {
-                    fprintf(tm_out, "%ld ", state->transition_matrix[i * config->maxnbclust + j]);
+                    long val = state->transition_matrix[i * config->maxnbclust + j];
+                    if (val > 0) {
+                        fprintf(tm_out, "%d %d %ld\n", i, j, val);
+                    }
                 }
-                fprintf(tm_out, "\n");
             }
             fclose(tm_out);
         }
