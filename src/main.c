@@ -118,6 +118,8 @@ int main(int argc, char *argv[]) {
             config.max_gprob_visitors = atoi(argv[++arg_idx]);
         } else if (strcmp(argv[arg_idx], "-te4") == 0) {
             config.te4_mode = 1;
+        } else if (strcmp(argv[arg_idx], "-te5") == 0) {
+            config.te5_mode = 1;
         } else if (strncmp(argv[arg_idx], "-pred", 5) == 0) {
             config.pred_mode = 1;
             char *params = argv[arg_idx] + 5;

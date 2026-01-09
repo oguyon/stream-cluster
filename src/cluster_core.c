@@ -213,6 +213,29 @@ double calc_min_dist_4pt(double d14, double d24, double d12, double d13, double 
     return sqrt((x3 - x4)*(x3 - x4) + (y3 - y4)*(y3 - y4));
 }
 
+double calc_min_dist_5pt(double d_f_c1, double d_f_c2, double d_f_c3,
+                         double d_t_c1, double d_t_c2, double d_t_c3,
+                         double d_c1_c2, double d_c1_c3, double d_c2_c3) {
+    if (d_c1_c2 < 1e-9) return 0.0;
+
+    double x3 = (d_c1_c3*d_c1_c3 + d_c1_c2*d_c1_c2 - d_c2_c3*d_c2_c3) / (2.0 * d_c1_c2);
+    double y3_sq = d_c1_c3*d_c1_c3 - x3*x3;
+    if (y3_sq < 1e-9) return 0.0;
+    double y3 = sqrt(y3_sq);
+
+    double xF = (d_f_c1*d_f_c1 + d_c1_c2*d_c1_c2 - d_f_c2*d_f_c2) / (2.0 * d_c1_c2);
+    double yF = (d_f_c1*d_f_c1 + d_c1_c3*d_c1_c3 - d_f_c3*d_f_c3 - 2.0 * xF * x3) / (2.0 * y3);
+    double zF_sq = d_f_c1*d_f_c1 - xF*xF - yF*yF;
+    double zF = (zF_sq > 0.0) ? sqrt(zF_sq) : 0.0;
+
+    double xT = (d_t_c1*d_t_c1 + d_c1_c2*d_c1_c2 - d_t_c2*d_t_c2) / (2.0 * d_c1_c2);
+    double yT = (d_t_c1*d_t_c1 + d_c1_c3*d_c1_c3 - d_t_c3*d_t_c3 - 2.0 * xT * x3) / (2.0 * y3);
+    double zT_sq = d_t_c1*d_t_c1 - xT*xT - yT*yT;
+    double zT = (zT_sq > 0.0) ? sqrt(zT_sq) : 0.0;
+
+    return sqrt((xF - xT)*(xF - xT) + (yF - yT)*(yF - yT) + (zF - zT)*(zF - zT));
+}
+
 int get_prediction_candidates(ClusterState *state, ClusterConfig *config, int *candidates, int max_candidates) {
     long total = state->total_frames_processed;
     int len = config->pred_len;
@@ -539,6 +562,76 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                             }
                         }
 
+                        // TE5 Pruning
+                        if (config->te5_mode && temp_count > 2) {
+                            for (int p = 0; p < temp_count - 2; p++) {
+                                for (int q = p + 1; q < temp_count - 1; q++) {
+                                    int c1 = temp_indices[p];
+                                    double d_f_c1 = temp_dists[p];
+                                    int c2 = temp_indices[q];
+                                    double d_f_c2 = temp_dists[q];
+                                    int c3 = cj; // Current
+                                    double d_f_c3 = dfc;
+
+                                    double d_c1_c2 = state->dccarray[c1 * config->maxnbclust + c2];
+                                    if (d_c1_c2 < 0) {
+                                         d_c1_c2 = get_dist(&state->clusters[c1].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
+                                         state->dccarray[c1 * config->maxnbclust + c2] = d_c1_c2;
+                                         state->dccarray[c2 * config->maxnbclust + c1] = d_c1_c2;
+                                    }
+
+                                    double d_c1_c3 = state->dccarray[c1 * config->maxnbclust + c3];
+                                    if (d_c1_c3 < 0) {
+                                         d_c1_c3 = get_dist(&state->clusters[c1].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                                         state->dccarray[c1 * config->maxnbclust + c3] = d_c1_c3;
+                                         state->dccarray[c3 * config->maxnbclust + c1] = d_c1_c3;
+                                    }
+
+                                    double d_c2_c3 = state->dccarray[c2 * config->maxnbclust + c3];
+                                    if (d_c2_c3 < 0) {
+                                         d_c2_c3 = get_dist(&state->clusters[c2].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                                         state->dccarray[c2 * config->maxnbclust + c3] = d_c2_c3;
+                                         state->dccarray[c3 * config->maxnbclust + c2] = d_c2_c3;
+                                    }
+
+                                    for (int k = 0; k < state->num_clusters; k++) {
+                                        if (!state->clmembflag[k]) continue;
+                                        if (k == c1 || k == c2 || k == c3) continue;
+
+                                        double d_k_c1 = state->dccarray[k * config->maxnbclust + c1];
+                                        if (d_k_c1 < 0) {
+                                             d_k_c1 = get_dist(&state->clusters[k].anchor, &state->clusters[c1].anchor, -1, -1.0, -1.0, config, state);
+                                             state->dccarray[k * config->maxnbclust + c1] = d_k_c1;
+                                             state->dccarray[c1 * config->maxnbclust + k] = d_k_c1;
+                                        }
+
+                                        double d_k_c2 = state->dccarray[k * config->maxnbclust + c2];
+                                        if (d_k_c2 < 0) {
+                                             d_k_c2 = get_dist(&state->clusters[k].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
+                                             state->dccarray[k * config->maxnbclust + c2] = d_k_c2;
+                                             state->dccarray[c2 * config->maxnbclust + k] = d_k_c2;
+                                        }
+
+                                        double d_k_c3 = state->dccarray[k * config->maxnbclust + c3];
+                                        if (d_k_c3 < 0) {
+                                             d_k_c3 = get_dist(&state->clusters[k].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                                             state->dccarray[k * config->maxnbclust + c3] = d_k_c3;
+                                             state->dccarray[c3 * config->maxnbclust + k] = d_k_c3;
+                                        }
+
+                                        double min_d = calc_min_dist_5pt(d_f_c1, d_f_c2, d_f_c3,
+                                                                         d_k_c1, d_k_c2, d_k_c3,
+                                                                         d_c1_c2, d_c1_c3, d_c2_c3);
+
+                                        if (min_d > config->rlim) {
+                                            state->clmembflag[k] = 0;
+                                            state->clusters_pruned++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         state->clmembflag[cj] = 0;
                     }
                     free(pred_candidates);
@@ -678,6 +771,76 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                             if (min_d > config->rlim) {
                                 state->clmembflag[k] = 0;
                                 state->clusters_pruned++;
+                            }
+                        }
+                    }
+                }
+
+                // TE5 Pruning
+                if (config->te5_mode && temp_count > 2) {
+                    for (int p = 0; p < temp_count - 2; p++) {
+                        for (int q = p + 1; q < temp_count - 1; q++) {
+                            int c1 = temp_indices[p];
+                            double d_f_c1 = temp_dists[p];
+                            int c2 = temp_indices[q];
+                            double d_f_c2 = temp_dists[q];
+                            int c3 = cj; // Current
+                            double d_f_c3 = dfc;
+
+                            double d_c1_c2 = state->dccarray[c1 * config->maxnbclust + c2];
+                            if (d_c1_c2 < 0) {
+                                 d_c1_c2 = get_dist(&state->clusters[c1].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
+                                 state->dccarray[c1 * config->maxnbclust + c2] = d_c1_c2;
+                                 state->dccarray[c2 * config->maxnbclust + c1] = d_c1_c2;
+                            }
+
+                            double d_c1_c3 = state->dccarray[c1 * config->maxnbclust + c3];
+                            if (d_c1_c3 < 0) {
+                                 d_c1_c3 = get_dist(&state->clusters[c1].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                                 state->dccarray[c1 * config->maxnbclust + c3] = d_c1_c3;
+                                 state->dccarray[c3 * config->maxnbclust + c1] = d_c1_c3;
+                            }
+
+                            double d_c2_c3 = state->dccarray[c2 * config->maxnbclust + c3];
+                            if (d_c2_c3 < 0) {
+                                 d_c2_c3 = get_dist(&state->clusters[c2].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                                 state->dccarray[c2 * config->maxnbclust + c3] = d_c2_c3;
+                                 state->dccarray[c3 * config->maxnbclust + c2] = d_c2_c3;
+                            }
+
+                            for (int k = 0; k < state->num_clusters; k++) {
+                                if (!state->clmembflag[k]) continue;
+                                if (k == c1 || k == c2 || k == c3) continue;
+
+                                double d_k_c1 = state->dccarray[k * config->maxnbclust + c1];
+                                if (d_k_c1 < 0) {
+                                     d_k_c1 = get_dist(&state->clusters[k].anchor, &state->clusters[c1].anchor, -1, -1.0, -1.0, config, state);
+                                     state->dccarray[k * config->maxnbclust + c1] = d_k_c1;
+                                     state->dccarray[c1 * config->maxnbclust + k] = d_k_c1;
+                                }
+
+                                double d_k_c2 = state->dccarray[k * config->maxnbclust + c2];
+                                if (d_k_c2 < 0) {
+                                     d_k_c2 = get_dist(&state->clusters[k].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
+                                     state->dccarray[k * config->maxnbclust + c2] = d_k_c2;
+                                     state->dccarray[c2 * config->maxnbclust + k] = d_k_c2;
+                                }
+
+                                double d_k_c3 = state->dccarray[k * config->maxnbclust + c3];
+                                if (d_k_c3 < 0) {
+                                     d_k_c3 = get_dist(&state->clusters[k].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                                     state->dccarray[k * config->maxnbclust + c3] = d_k_c3;
+                                     state->dccarray[c3 * config->maxnbclust + k] = d_k_c3;
+                                }
+
+                                double min_d = calc_min_dist_5pt(d_f_c1, d_f_c2, d_f_c3,
+                                                                 d_k_c1, d_k_c2, d_k_c3,
+                                                                 d_c1_c2, d_c1_c3, d_c2_c3);
+
+                                if (min_d > config->rlim) {
+                                    state->clmembflag[k] = 0;
+                                    state->clusters_pruned++;
+                                }
                             }
                         }
                     }
