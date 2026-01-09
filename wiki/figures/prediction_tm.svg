@@ -1,0 +1,31 @@
+<svg width="500" height="200" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .state { fill: #fff; stroke: #333; stroke-width: 2; rx: 15; }
+    .label { font-family: sans-serif; font-size: 14px; text-anchor: middle; }
+    .arrow { stroke: #666; stroke-width: 2; marker-end: url(#arrowhead); }
+    .prob { font-size: 12px; fill: #666; }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+    </marker>
+  </defs>
+
+  <rect x="50" y="80" width="60" height="40" class="state" />
+  <text x="80" y="105" class="label">C_prev</text>
+
+  <rect x="250" y="40" width="60" height="40" class="state" />
+  <text x="280" y="65" class="label">C_A</text>
+
+  <rect x="250" y="120" width="60" height="40" class="state" />
+  <text x="280" y="145" class="label">C_B</text>
+
+  <!-- Transitions -->
+  <line x1="110" y1="100" x2="240" y2="60" class="arrow" />
+  <text x="180" y="70" class="prob">High Prob</text>
+
+  <line x1="110" y1="100" x2="240" y2="140" class="arrow" stroke-dasharray="4,4" />
+  <text x="180" y="130" class="prob">Low Prob</text>
+
+  <text x="20" y="30" class="label" font-weight="bold" text-anchor="start">Transition Matrix (-tm)</text>
+</svg>
