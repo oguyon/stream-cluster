@@ -13,14 +13,14 @@ A point moving slowly along a spiral trajectory. This tests the algorithm's "sho
 
 **Command**:
 ```bash
-./image-cluster-mktxtseq 1000 bench_spiral_slow.txt 2Dspiral3 -noise 0.03
+./image-cluster-mktxtseq 1000 bench_spiral_slow.txt 2Dspiral3
 ./image-cluster 0.1 bench_spiral_slow.txt
 ```
 
 **Result**:
 ![Spiral Slow](images/bench_spiral_slow.png)
-*   **Time**: ~32 ms
-*   **Calls**: ~17k (for 1000 frames)
+*   **Time**: ~25 ms
+*   **Calls**: ~18.5k (for 1000 frames)
 
 ## 2. Random Point on 2D Circle
 
