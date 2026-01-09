@@ -62,6 +62,7 @@ void print_usage(char *progname) {
     printf("  -fmatchb <val> Set fmatch parameter b (default: 0.5)\n");
     printf("  -maxvis <val>  Max visitors for gprob history (default: 1000)\n");
     printf("  -pred[l,h,n]   Prediction with pattern detection (default: 10,1000,2)\n");
+    printf("  -te4           Use 4-point triangle inequality pruning\n");
 
     printf("\n  [Analysis & Debugging]\n");
     printf("  -scandist      Measure distance stats\n");
