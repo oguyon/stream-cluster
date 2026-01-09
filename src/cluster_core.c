@@ -294,61 +294,79 @@ int get_prediction_candidates(ClusterState *state, ClusterConfig *config, int *c
 }
 
 
-/**
- * Calculates the minimum distance d34 between Point 3 and Point 4.
- * @param d12 Distance between Point 1 and Point 2 (The shared base)
- * @param d13 Distance between Point 1 and Point 3
- * @param d14 Distance between Point 1 and Point 4
- * @param d23 Distance between Point 2 and Point 3
- * @param d24 Distance between Point 2 and Point 4
- * @return The minimum distance between Point 3 and Point 4. Returns -1.0 if the configuration is invalid.
- */
-double get_min_distance_d34(double d12, double d13, double d14, double d23, double d24) {
-    // 1. Calculate squared distances for efficiency
-    double d12_sq = d12 * d12;
-    double d13_sq = d13 * d13;
-    double d14_sq = d14 * d14;
-    double d23_sq = d23 * d23;
-    double d24_sq = d24 * d24;
+static void prune_candidates_te5(ClusterConfig *config, ClusterState *state, int *temp_indices, double *temp_dists, int temp_count) {
+    if (!config->te5_mode || temp_count < 3) return;
 
-    // 2. Calculate the "Cosine Numerator" terms (K)
-    // K represents 2 * d12 * side * cos(theta) derived from Law of Cosines
-    double K_123 = d12_sq + d13_sq - d23_sq;
-    double K_124 = d12_sq + d14_sq - d24_sq;
+    int c3 = temp_indices[temp_count - 1]; // Current cluster (newest anchor)
+    double d_f_c3 = temp_dists[temp_count - 1];
 
-    // 3. Calculate the Heron's Polynomial terms (H)
-    // H represents (2 * Area * 2)^2. If H < 0, the triangle is impossible.
-    double H_123 = 4.0 * d12_sq * d13_sq - (K_123 * K_123);
-    double H_124 = 4.0 * d12_sq * d14_sq - (K_124 * K_124);
+    for (int p = 0; p < temp_count - 2; p++) {
+        for (int q = p + 1; q < temp_count - 1; q++) {
+            int c1 = temp_indices[p];
+            double d_f_c1 = temp_dists[p];
+            int c2 = temp_indices[q];
+            double d_f_c2 = temp_dists[q];
 
-    // Validate geometry: H terms must be non-negative
-    if (H_123 < 0 || H_124 < 0) {
-        printf("Error: Invalid triangle geometry provided.\n");
-        return -1.0;
+            // Get inter-cluster distances (lazy load)
+            double d_c1_c2 = state->dccarray[c1 * config->maxnbclust + c2];
+            if (d_c1_c2 < 0) {
+                 d_c1_c2 = get_dist(&state->clusters[c1].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
+                 state->dccarray[c1 * config->maxnbclust + c2] = d_c1_c2;
+                 state->dccarray[c2 * config->maxnbclust + c1] = d_c1_c2;
+            }
+
+            double d_c1_c3 = state->dccarray[c1 * config->maxnbclust + c3];
+            if (d_c1_c3 < 0) {
+                    d_c1_c3 = get_dist(&state->clusters[c1].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                    state->dccarray[c1 * config->maxnbclust + c3] = d_c1_c3;
+                    state->dccarray[c3 * config->maxnbclust + c1] = d_c1_c3;
+            }
+
+            double d_c2_c3 = state->dccarray[c2 * config->maxnbclust + c3];
+            if (d_c2_c3 < 0) {
+                    d_c2_c3 = get_dist(&state->clusters[c2].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                    state->dccarray[c2 * config->maxnbclust + c3] = d_c2_c3;
+                    state->dccarray[c3 * config->maxnbclust + c2] = d_c2_c3;
+            }
+
+            for (int k = 0; k < state->num_clusters; k++) {
+                if (!state->clmembflag[k]) continue;
+                if (k == c1 || k == c2 || k == c3) continue;
+
+                // Lazy load k distances
+                double d_k_c1 = state->dccarray[k * config->maxnbclust + c1];
+                if (d_k_c1 < 0) {
+                        d_k_c1 = get_dist(&state->clusters[k].anchor, &state->clusters[c1].anchor, -1, -1.0, -1.0, config, state);
+                        state->dccarray[k * config->maxnbclust + c1] = d_k_c1;
+                        state->dccarray[c1 * config->maxnbclust + k] = d_k_c1;
+                }
+
+                double d_k_c2 = state->dccarray[k * config->maxnbclust + c2];
+                if (d_k_c2 < 0) {
+                        d_k_c2 = get_dist(&state->clusters[k].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
+                        state->dccarray[k * config->maxnbclust + c2] = d_k_c2;
+                        state->dccarray[c2 * config->maxnbclust + k] = d_k_c2;
+                }
+
+                double d_k_c3 = state->dccarray[k * config->maxnbclust + c3];
+                if (d_k_c3 < 0) {
+                        d_k_c3 = get_dist(&state->clusters[k].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
+                        state->dccarray[k * config->maxnbclust + c3] = d_k_c3;
+                        state->dccarray[c3 * config->maxnbclust + k] = d_k_c3;
+                }
+
+                double min_d = calc_min_dist_5pt(d_f_c1, d_f_c2, d_f_c3,
+                                                 d_k_c1, d_k_c2, d_k_c3,
+                                                 d_c1_c2, d_c1_c3, d_c2_c3);
+
+                if (min_d > config->rlim) {
+                    state->clmembflag[k] = 0;
+                    state->clusters_pruned++;
+                }
+            }
+        }
     }
-
-    // 4. Calculate the squared distance x^2
-    // To find the MINIMUM distance (points on same side), we ADD the sqrt(H*H) term inside the bracket
-    // because the standard formula is d13^2 + d14^2 - 2*d13*d14*cos(a-b).
-    // The expansion of cos(a-b) is cos*cos + sin*sin.
-    double cross_term = (K_123 * K_124) + sqrt(H_123 * H_124);
-
-    double x_sq = d13_sq + d14_sq - (cross_term / (2.0 * d12_sq));
-
-    // Handle floating point epsilon errors slightly below zero
-    if (x_sq < 0 && x_sq > -1e-9) x_sq = 0.0;
-
-    if (x_sq < 0) {
-        printf("Error: Calculated squared distance is negative (impossible).\n");
-        return -1.0;
-    }
-
-    return sqrt(x_sq);
 }
-
-
-
-
 
 
 void run_clustering(ClusterConfig *config, ClusterState *state) {
@@ -363,6 +381,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     state->pruned_fraction_sum = (double *)calloc(state->max_steps_recorded, sizeof(double));
     state->step_counts = (long *)calloc(state->max_steps_recorded, sizeof(long));
     state->transition_matrix = (long *)calloc(config->maxnbclust * config->maxnbclust, sizeof(long));
+    state->mixed_probs = (double *)calloc(config->maxnbclust, sizeof(double));
 
     int *temp_indices = (int *)malloc(config->maxnbclust * sizeof(int));
     double *temp_dists = (double *)malloc(config->maxnbclust * sizeof(double));
@@ -375,6 +394,9 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     if (config->verbose_level >= 2) {
         verbose_candidates = (Candidate *)malloc(config->maxnbclust * sizeof(Candidate));
     }
+
+    // For sorting candidates when transition matrix is used
+    Candidate *sorting_candidates = (Candidate *)malloc(config->maxnbclust * sizeof(Candidate));
 
     char *out_dir = NULL;
     // We assume out_dir is created in main or we create it here?
@@ -457,10 +479,35 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
             for (int i = 0; i < state->num_clusters; i++) state->current_gprobs[i] = 1.0;
             for (int i = 0; i < state->num_clusters; i++) state->clmembflag[i] = 1;
 
+            // Calculate mixed probabilities
+            double trans_prob_sum = 0.0;
+            if (config->tm_mixing_coeff > 0.0 && prev_assigned_cluster != -1) {
+                for (int i = 0; i < state->num_clusters; i++) {
+                    trans_prob_sum += (double)state->transition_matrix[prev_assigned_cluster * config->maxnbclust + i];
+                }
+            }
+
+            for (int i = 0; i < state->num_clusters; i++) {
+                double prior = state->clusters[i].prob;
+                double tp = 0.0;
+                if (config->tm_mixing_coeff > 0.0 && prev_assigned_cluster != -1 && trans_prob_sum > 0.0) {
+                    tp = (double)state->transition_matrix[prev_assigned_cluster * config->maxnbclust + i] / trans_prob_sum;
+                    state->mixed_probs[i] = (1.0 - config->tm_mixing_coeff) * prior + config->tm_mixing_coeff * tp;
+                } else {
+                    state->mixed_probs[i] = prior;
+                }
+            }
+
             if (!config->gprob_mode) {
-                for (int i = 0; i < state->num_clusters; i++) state->probsortedclindex[i] = i;
-                g_clusters_ptr = state->clusters;
-                qsort(state->probsortedclindex, state->num_clusters, sizeof(int), compare_probs_wrapper);
+                // Sort based on mixed_probs
+                for(int i=0; i<state->num_clusters; i++) {
+                    sorting_candidates[i].id = i;
+                    sorting_candidates[i].p = state->mixed_probs[i];
+                }
+                qsort(sorting_candidates, state->num_clusters, sizeof(Candidate), compare_candidates);
+                for(int i=0; i<state->num_clusters; i++) {
+                    state->probsortedclindex[i] = sorting_candidates[i].id;
+                }
             }
 
             int k = 0;
@@ -563,73 +610,8 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                         }
 
                         // TE5 Pruning
-                        if (config->te5_mode && temp_count > 2) {
-                            for (int p = 0; p < temp_count - 2; p++) {
-                                for (int q = p + 1; q < temp_count - 1; q++) {
-                                    int c1 = temp_indices[p];
-                                    double d_f_c1 = temp_dists[p];
-                                    int c2 = temp_indices[q];
-                                    double d_f_c2 = temp_dists[q];
-                                    int c3 = cj; // Current
-                                    double d_f_c3 = dfc;
-
-                                    double d_c1_c2 = state->dccarray[c1 * config->maxnbclust + c2];
-                                    if (d_c1_c2 < 0) {
-                                         d_c1_c2 = get_dist(&state->clusters[c1].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
-                                         state->dccarray[c1 * config->maxnbclust + c2] = d_c1_c2;
-                                         state->dccarray[c2 * config->maxnbclust + c1] = d_c1_c2;
-                                    }
-
-                                    double d_c1_c3 = state->dccarray[c1 * config->maxnbclust + c3];
-                                    if (d_c1_c3 < 0) {
-                                         d_c1_c3 = get_dist(&state->clusters[c1].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
-                                         state->dccarray[c1 * config->maxnbclust + c3] = d_c1_c3;
-                                         state->dccarray[c3 * config->maxnbclust + c1] = d_c1_c3;
-                                    }
-
-                                    double d_c2_c3 = state->dccarray[c2 * config->maxnbclust + c3];
-                                    if (d_c2_c3 < 0) {
-                                         d_c2_c3 = get_dist(&state->clusters[c2].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
-                                         state->dccarray[c2 * config->maxnbclust + c3] = d_c2_c3;
-                                         state->dccarray[c3 * config->maxnbclust + c2] = d_c2_c3;
-                                    }
-
-                                    for (int k = 0; k < state->num_clusters; k++) {
-                                        if (!state->clmembflag[k]) continue;
-                                        if (k == c1 || k == c2 || k == c3) continue;
-
-                                        double d_k_c1 = state->dccarray[k * config->maxnbclust + c1];
-                                        if (d_k_c1 < 0) {
-                                             d_k_c1 = get_dist(&state->clusters[k].anchor, &state->clusters[c1].anchor, -1, -1.0, -1.0, config, state);
-                                             state->dccarray[k * config->maxnbclust + c1] = d_k_c1;
-                                             state->dccarray[c1 * config->maxnbclust + k] = d_k_c1;
-                                        }
-
-                                        double d_k_c2 = state->dccarray[k * config->maxnbclust + c2];
-                                        if (d_k_c2 < 0) {
-                                             d_k_c2 = get_dist(&state->clusters[k].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
-                                             state->dccarray[k * config->maxnbclust + c2] = d_k_c2;
-                                             state->dccarray[c2 * config->maxnbclust + k] = d_k_c2;
-                                        }
-
-                                        double d_k_c3 = state->dccarray[k * config->maxnbclust + c3];
-                                        if (d_k_c3 < 0) {
-                                             d_k_c3 = get_dist(&state->clusters[k].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
-                                             state->dccarray[k * config->maxnbclust + c3] = d_k_c3;
-                                             state->dccarray[c3 * config->maxnbclust + k] = d_k_c3;
-                                        }
-
-                                        double min_d = calc_min_dist_5pt(d_f_c1, d_f_c2, d_f_c3,
-                                                                         d_k_c1, d_k_c2, d_k_c3,
-                                                                         d_c1_c2, d_c1_c3, d_c2_c3);
-
-                                        if (min_d > config->rlim) {
-                                            state->clmembflag[k] = 0;
-                                            state->clusters_pruned++;
-                                        }
-                                    }
-                                }
-                            }
+                        if (config->te5_mode) {
+                            prune_candidates_te5(config, state, temp_indices, temp_dists, temp_count);
                         }
 
                         state->clmembflag[cj] = 0;
@@ -643,7 +625,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                     int vcount = 0;
                     for (int i = 0; i < state->num_clusters; i++) {
                         if (state->clmembflag[i]) {
-                            double p = state->clusters[i].prob;
+                            double p = state->mixed_probs[i];
                             if (config->gprob_mode) {
                                 p *= state->current_gprobs[i];
                             }
@@ -676,7 +658,7 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                     cj = -1;
                     for (int i = 0; i < state->num_clusters; i++) {
                         if (state->clmembflag[i]) {
-                            double p = state->clusters[i].prob * state->current_gprobs[i];
+                            double p = state->mixed_probs[i] * state->current_gprobs[i];
                             if (p > max_p) {
                                 max_p = p;
                                 cj = i;
@@ -777,73 +759,8 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
                 }
 
                 // TE5 Pruning
-                if (config->te5_mode && temp_count > 2) {
-                    for (int p = 0; p < temp_count - 2; p++) {
-                        for (int q = p + 1; q < temp_count - 1; q++) {
-                            int c1 = temp_indices[p];
-                            double d_f_c1 = temp_dists[p];
-                            int c2 = temp_indices[q];
-                            double d_f_c2 = temp_dists[q];
-                            int c3 = cj; // Current
-                            double d_f_c3 = dfc;
-
-                            double d_c1_c2 = state->dccarray[c1 * config->maxnbclust + c2];
-                            if (d_c1_c2 < 0) {
-                                 d_c1_c2 = get_dist(&state->clusters[c1].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
-                                 state->dccarray[c1 * config->maxnbclust + c2] = d_c1_c2;
-                                 state->dccarray[c2 * config->maxnbclust + c1] = d_c1_c2;
-                            }
-
-                            double d_c1_c3 = state->dccarray[c1 * config->maxnbclust + c3];
-                            if (d_c1_c3 < 0) {
-                                 d_c1_c3 = get_dist(&state->clusters[c1].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
-                                 state->dccarray[c1 * config->maxnbclust + c3] = d_c1_c3;
-                                 state->dccarray[c3 * config->maxnbclust + c1] = d_c1_c3;
-                            }
-
-                            double d_c2_c3 = state->dccarray[c2 * config->maxnbclust + c3];
-                            if (d_c2_c3 < 0) {
-                                 d_c2_c3 = get_dist(&state->clusters[c2].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
-                                 state->dccarray[c2 * config->maxnbclust + c3] = d_c2_c3;
-                                 state->dccarray[c3 * config->maxnbclust + c2] = d_c2_c3;
-                            }
-
-                            for (int k = 0; k < state->num_clusters; k++) {
-                                if (!state->clmembflag[k]) continue;
-                                if (k == c1 || k == c2 || k == c3) continue;
-
-                                double d_k_c1 = state->dccarray[k * config->maxnbclust + c1];
-                                if (d_k_c1 < 0) {
-                                     d_k_c1 = get_dist(&state->clusters[k].anchor, &state->clusters[c1].anchor, -1, -1.0, -1.0, config, state);
-                                     state->dccarray[k * config->maxnbclust + c1] = d_k_c1;
-                                     state->dccarray[c1 * config->maxnbclust + k] = d_k_c1;
-                                }
-
-                                double d_k_c2 = state->dccarray[k * config->maxnbclust + c2];
-                                if (d_k_c2 < 0) {
-                                     d_k_c2 = get_dist(&state->clusters[k].anchor, &state->clusters[c2].anchor, -1, -1.0, -1.0, config, state);
-                                     state->dccarray[k * config->maxnbclust + c2] = d_k_c2;
-                                     state->dccarray[c2 * config->maxnbclust + k] = d_k_c2;
-                                }
-
-                                double d_k_c3 = state->dccarray[k * config->maxnbclust + c3];
-                                if (d_k_c3 < 0) {
-                                     d_k_c3 = get_dist(&state->clusters[k].anchor, &state->clusters[c3].anchor, -1, -1.0, -1.0, config, state);
-                                     state->dccarray[k * config->maxnbclust + c3] = d_k_c3;
-                                     state->dccarray[c3 * config->maxnbclust + k] = d_k_c3;
-                                }
-
-                                double min_d = calc_min_dist_5pt(d_f_c1, d_f_c2, d_f_c3,
-                                                                 d_k_c1, d_k_c2, d_k_c3,
-                                                                 d_c1_c2, d_c1_c3, d_c2_c3);
-
-                                if (min_d > config->rlim) {
-                                    state->clmembflag[k] = 0;
-                                    state->clusters_pruned++;
-                                }
-                            }
-                        }
-                    }
+                if (config->te5_mode) {
+                    prune_candidates_te5(config, state, temp_indices, temp_dists, temp_count);
                 }
 
                 if (state->clmembflag[cj]) {
@@ -1016,4 +933,5 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     free(temp_indices);
     free(temp_dists);
     if (verbose_candidates) free(verbose_candidates);
+    if (sorting_candidates) free(sorting_candidates);
 }

@@ -120,6 +120,8 @@ int main(int argc, char *argv[]) {
             config.te4_mode = 1;
         } else if (strcmp(argv[arg_idx], "-te5") == 0) {
             config.te5_mode = 1;
+        } else if (strcmp(argv[arg_idx], "-tm") == 0) {
+            config.tm_mixing_coeff = atof(argv[++arg_idx]);
         } else if (strncmp(argv[arg_idx], "-pred", 5) == 0) {
             config.pred_mode = 1;
             char *params = argv[arg_idx] + 5;
@@ -272,6 +274,7 @@ int main(int argc, char *argv[]) {
     if (state.pruned_fraction_sum) free(state.pruned_fraction_sum);
     if (state.step_counts) free(state.step_counts);
     if (state.transition_matrix) free(state.transition_matrix);
+    if (state.mixed_probs) free(state.mixed_probs);
 
     if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
 

@@ -32,6 +32,7 @@ typedef struct {
     int pred_n;
     int te4_mode;
     int te5_mode;
+    double tm_mixing_coeff;
 } ClusterConfig;
 
 // VisitorList structure
@@ -60,6 +61,7 @@ typedef struct {
     long *step_counts;
     int max_steps_recorded;
     long *transition_matrix;
+    double *mixed_probs;
 } ClusterState;
 
 // Candidate structure for sorting
