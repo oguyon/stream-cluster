@@ -1,0 +1,32 @@
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Styles -->
+  <style>
+    .point { fill: #333; }
+    .label { font-family: sans-serif; font-size: 14px; }
+    .line { stroke: #666; stroke-width: 2; stroke-dasharray: 5,5; }
+    .solid { stroke: #333; stroke-width: 2; }
+  </style>
+
+  <!-- Triangle -->
+  <circle cx="200" cy="50" r="5" class="point" />
+  <text x="210" y="50" class="label">fi (Frame)</text>
+
+  <circle cx="100" cy="250" r="5" class="point" />
+  <text x="80" y="270" class="label">cj (Tested)</text>
+
+  <circle cx="300" cy="250" r="5" class="point" />
+  <text x="310" y="270" class="label">cl (Candidate)</text>
+
+  <!-- Lines -->
+  <line x1="200" y1="50" x2="100" y2="250" class="solid" />
+  <text x="130" y="150" class="label">dist(fi, cj)</text>
+
+  <line x1="100" y1="250" x2="300" y2="250" class="solid" />
+  <text x="200" y="265" class="label">dist(cj, cl)</text>
+
+  <line x1="200" y1="50" x2="300" y2="250" class="line" />
+  <text x="260" y="150" class="label">dist(fi, cl) >= ?</text>
+
+  <text x="50" y="20" class="label" font-weight="bold">3-Point Pruning</text>
+  <text x="50" y="290" class="label" font-size="12">|d(fi, cj) - d(cj, cl)| <= d(fi, cl)</text>
+</svg>

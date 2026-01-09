@@ -2,6 +2,10 @@
 
 The algorithm groups frames based on Euclidean distance. Each cluster `cj` is defined by an **anchor frame**. A frame `fi` belongs to `cj` if `dist(fi, cj) < rlim`.
 
+## Flowchart
+
+![Algorithm Flow](figures/clustering_flow.svg)
+
 ## Notations
 
 - `dcc(ci, cj)`: Distance between anchors of cluster `ci` and `cj`.
@@ -46,7 +50,12 @@ Then loop over frame index `fi` until all frames clustered:
 
 ## Pruning Mechanisms
 
+The algorithm minimizes expensive distance computations (`framedist`) by "pruning" impossible candidates using geometry.
+
 ### Triangle Inequality (3-Point)
+
+![3-Point Pruning](figures/pruning_3pt.svg)
+
 Standard pruning using the metric property: `dist(fi, cl) >= |dist(fi, cj) - dist(cj, cl)|`. If the lower bound > `rlim`, `cl` is pruned.
 
 ### 4-Point Pruning (`-te4`)
@@ -54,10 +63,15 @@ Uses two previously measured clusters (`c1`, `c2`) relative to the current frame
 It computes the minimum possible distance `dist(fi, ck)` given the known distances `dist(fi, c1)`, `dist(fi, c2)` and the inter-cluster distances.
 
 ### 5-Point Pruning (`-te5`)
+
+![5-Point Pruning](figures/pruning_5pt.svg)
+
 Uses three previously measured clusters (`c1`, `c2`, `c3`) relative to the current frame `fi` to prune a candidate `ck`.
 This establishes a local 3D coordinate system using the three anchors and calculates the geometric lower bound for `dist(fi, ck)`. This is generally more powerful than 3-point or 4-point pruning, especially in higher dimensions where simple triangle inequalities are loose.
 
 ## Transition Matrix Mixing (`-tm`)
+
+![Transition Matrix](figures/prediction_tm.svg)
 
 The `-tm <coeff>` option allows the algorithm to learn the temporal structure of the data.
 - It maintains a transition matrix `tm(from, to)` counting how often cluster `from` is followed by cluster `to`.
