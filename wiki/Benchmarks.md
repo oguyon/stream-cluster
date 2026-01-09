@@ -3,34 +3,41 @@
 This page documents the performance of the `image_cluster` tool.
 
 ## Test Environment
-- **Processor**: (Sandbox Environment)
-- **Data**: Synthetic 3D random walk sequences generated via `image-cluster-mktxtseq`.
-- **Compiler**: GCC with `-O3` (implied by Release build).
+- **Data**: Synthetic 128-dimensional sequences generated via `image-cluster-mktxtseq`.
+- **Compiler**: GCC/Clang with `-O3 -march=native -funroll-loops` (AVX2 enabled).
 
-## Scenario 1: Random Walk (2000 frames, 5 repetitions)
+## Scenario 1: Random Walk (1000 frames)
 
 **Dataset**:
-- 2000 unique points (random walk) repeated 5 times.
-- Total frames: 10,000.
-- Noise: 0.5 radius.
-
-**Command**:
-```bash
-./image-cluster-mktxtseq 2000 benchmark_data.txt 3Dwalk -repeat 5 -noise 0.5
-./image_cluster 1.5 benchmark_data.txt -dprob 0.05 [-gprob]
-```
+- 1000 frames, 128 dimensions.
+- Random walk pattern (highly correlated).
+- `rlim=0.5`.
 
 **Results**:
 
-| Mode | Total Time (ms) | Dist Calls | Clusters Found | Notes |
-|------|-----------------|------------|----------------|-------|
-| Standard | ~34 ms | 10,292 | 4 | Baseline performance. |
-| Geometric Prob (`-gprob`) | ~32 ms | 10,456 | 4 | Slightly faster due to optimized candidate ranking. |
+| Mode | Total Time (ms) | Dist Calls | Notes |
+|------|-----------------|------------|-------|
+| Standard | ~39 ms | 1,846 | Baseline performance. |
+| Transition Matrix (`-tm 1.0`) | ~38 ms | 1,832 | Slight reduction in calls by using history. |
+| Geometric Prob (`-gprob`) | ~37 ms | 1,846 | Efficient candidate ranking. |
 
-*Note: Execution times include I/O overhead which may vary.*
+## Scenario 2: Uniform Random (1000 frames)
+
+**Dataset**:
+- 1000 frames, 128 dimensions.
+- Uniform random distribution (uncorrelated, "hard" clustering).
+- `rlim=2.5`.
+
+**Results**:
+
+| Mode | Total Time (ms) | Dist Calls | Notes |
+|------|-----------------|------------|-------|
+| Standard (Triangle Ineq) | ~756 ms | 985,683 | Fast metric evaluation (AVX2) dominates. |
+| 4-Point Pruning (`-te4`) | ~11,811 ms | 605,013 | Reduced calls by ~40%, but high logic overhead. |
+| 5-Point Pruning (`-te5`) | ~98,744 ms | 559,962 | Reduced calls by ~45%, but very high logic overhead. |
 
 ## Performance Characteristics
 
-1.  **Complexity**: The algorithm scales effectively linearly with the number of frames ($O(N)$) for well-separated clusters, as most candidates are pruned via the triangle inequality.
-2.  **Memory**: Memory usage is dominated by the `FrameInfo` storage which scales with $N$.
-3.  **Optimization**: The `-gprob` option improves performance on correlated data streams by predicting likely clusters based on previous measurements, reducing the average number of distance calculations required per frame.
+1.  **Metric vs Logic**: The distance metric (`framedist`) is heavily optimized (AVX2). For simple Euclidean distance in RAM, it is often faster to compute the distance than to run complex pruning logic (`-te4`, `-te5`).
+2.  **Pruning Power**: `-te5` is mathematically the strongest pruner, significantly reducing the number of metric evaluations. It is recommended when the distance metric is **computationally expensive** (e.g., complex image similarity, disk-based retrieval) or when dimensions are extremely high (>1000) such that triangle inequality fails.
+3.  **Correlated Data**: For time-series data (random walk, video), standard pruning combined with `-tm` or `-gprob` offers the best balance of speed and accuracy.
