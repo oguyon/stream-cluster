@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <ctype.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -20,7 +21,7 @@ typedef enum {
 
 typedef struct {
     GenType type;
-    int dim;      // 2 or 3
+    int dim;
     double param; // generic parameter (period, step, loops)
 } GeneratorConfig;
 
@@ -29,111 +30,120 @@ double rand_double() {
     return (double)rand() / (double)RAND_MAX;
 }
 
-// Generate random point in unit circle/sphere
-void gen_random(double *x, double *y, double *z, int dim) {
+// Generate random point
+void gen_random_point(double *out, int dim) {
     if (dim == 3) {
         double r = cbrt(rand_double());
         double costheta = 1.0 - 2.0 * rand_double();
         double phi = 2.0 * M_PI * rand_double();
         double sintheta = sqrt(1.0 - costheta * costheta);
-        *x = r * sintheta * cos(phi);
-        *y = r * sintheta * sin(phi);
-        *z = r * costheta;
-    } else {
+        out[0] = r * sintheta * cos(phi);
+        out[1] = r * sintheta * sin(phi);
+        out[2] = r * costheta;
+    } else if (dim == 2) {
         double r = sqrt(rand_double());
         double theta = 2.0 * M_PI * rand_double();
-        *x = r * cos(theta);
-        *y = r * sin(theta);
-        *z = 0.0;
+        out[0] = r * cos(theta);
+        out[1] = r * sin(theta);
+    } else {
+        // High dim: uniform in hypercube [-1, 1] normalized?
+        // Or just uniform in hypercube [0, 1]?
+        // Let's do uniform in [-1, 1] to simulate feature vectors centered around 0
+        for (int d = 0; d < dim; d++) {
+            out[d] = 2.0 * rand_double() - 1.0;
+        }
     }
 }
 
-// Generate random point ON unit circle/sphere
-void gen_sphere(double *x, double *y, double *z, int dim) {
+// Generate random point ON unit sphere
+void gen_sphere_point(double *out, int dim) {
     if (dim == 3) {
         double costheta = 1.0 - 2.0 * rand_double();
         double phi = 2.0 * M_PI * rand_double();
         double sintheta = sqrt(1.0 - costheta * costheta);
-        *x = sintheta * cos(phi);
-        *y = sintheta * sin(phi);
-        *z = costheta;
-    } else {
-        // 2D sphere is just a circle edge
+        out[0] = sintheta * cos(phi);
+        out[1] = sintheta * sin(phi);
+        out[2] = costheta;
+    } else if (dim == 2) {
         double theta = 2.0 * M_PI * rand_double();
-        *x = cos(theta);
-        *y = sin(theta);
-        *z = 0.0;
+        out[0] = cos(theta);
+        out[1] = sin(theta);
+    } else {
+        // Normal distribution method for N-sphere
+        double sum_sq = 0.0;
+        for (int d = 0; d < dim; d++) {
+            // Box-Muller for normal dist
+            double u1 = rand_double();
+            double u2 = rand_double();
+            double z = sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
+            out[d] = z;
+            sum_sq += z * z;
+        }
+        double norm = sqrt(sum_sq);
+        for (int d = 0; d < dim; d++) {
+            out[d] /= norm;
+        }
     }
 }
 
-// Generate circle point (2D path)
-void gen_circle(double *x, double *y, double *z, long index, double period, int dim) {
+void gen_circle_point(double *out, long index, double period, int dim) {
     if (period <= 0.0) period = 1.0;
     double theta = 2.0 * M_PI * index / period;
-    *x = cos(theta);
-    *y = sin(theta);
-    *z = 0.0;
+    out[0] = cos(theta);
+    out[1] = sin(theta);
+    for (int d = 2; d < dim; d++) out[d] = 0.0;
 }
 
-// Generate random walk point
-void gen_walk(double *x, double *y, double *z, double step_size, int dim) {
+void gen_walk_point(double *current, double step_size, int dim) {
+    double *next = (double *)malloc(dim * sizeof(double));
     int attempts = 0;
-    double nx, ny, nz;
-    do {
+
+    while (1) {
         if (dim == 3) {
-            // Random direction in 3D
             double costheta = 1.0 - 2.0 * rand_double();
             double phi = 2.0 * M_PI * rand_double();
             double sintheta = sqrt(1.0 - costheta * costheta);
             double dx = step_size * sintheta * cos(phi);
             double dy = step_size * sintheta * sin(phi);
             double dz = step_size * costheta;
-
-            nx = *x + dx;
-            ny = *y + dy;
-            nz = *z + dz;
-
-            if (nx*nx + ny*ny + nz*nz > 1.0) {
-                attempts++;
-                if (attempts > 100) { nx=*x; ny=*y; nz=*z; break; }
-            } else {
-                break;
-            }
-        } else {
+            next[0] = current[0] + dx;
+            next[1] = current[1] + dy;
+            next[2] = current[2] + dz;
+        } else if (dim == 2) {
             double angle = 2.0 * M_PI * rand_double();
-            nx = *x + step_size * cos(angle);
-            ny = *y + step_size * sin(angle);
-            nz = 0.0;
-
-            if (nx*nx + ny*ny > 1.0) {
-                attempts++;
-                if (attempts > 100) { nx=*x; ny=*y; break; }
-            } else {
-                break;
+            next[0] = current[0] + step_size * cos(angle);
+            next[1] = current[1] + step_size * sin(angle);
+        } else {
+            // Random direction in N-dim
+            double sum_sq = 0.0;
+            for(int d=0; d<dim; d++) {
+                double u1 = rand_double();
+                double u2 = rand_double();
+                double z = sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
+                next[d] = z;
+                sum_sq += z*z;
+            }
+            double norm = sqrt(sum_sq);
+            for(int d=0; d<dim; d++) {
+                next[d] = current[d] + (next[d] / norm) * step_size;
             }
         }
-    } while (1);
 
-    *x = nx;
-    *y = ny;
-    *z = nz;
-}
+        // Check bounds (unit sphere)
+        double r2 = 0.0;
+        for (int d = 0; d < dim; d++) r2 += next[d] * next[d];
 
-// Generate spiral
-void gen_spiral(double *x, double *y, double *z, long index, long total_points, double loops, int dim) {
-    double t = (double)index / (double)total_points;
-    if (dim == 3) {
-        // 3D Spiral (Conical)
-        *x = t * cos(2.0 * M_PI * loops * t);
-        *y = t * sin(2.0 * M_PI * loops * t);
-        *z = 2.0 * t - 1.0; // z from -1 to 1
-    } else {
-        double r = t;
-        double theta = 2.0 * M_PI * loops * t;
-        *x = r * cos(theta);
-        *y = r * sin(theta);
-        *z = 0.0;
+        if (r2 <= 1.0) break;
+
+        attempts++;
+        if (attempts > 100) {
+            memcpy(next, current, dim * sizeof(double));
+            break;
+        }
     }
+
+    memcpy(current, next, dim * sizeof(double));
+    free(next);
 }
 
 void print_args_on_error(int argc, char *argv[]) {
@@ -148,11 +158,9 @@ int main(int argc, char *argv[]) {
     if (argc < 3) {
         printf("Usage: %s <N> <filename> [pattern] [options]\n", argv[0]);
         printf("Patterns:\n");
-        printf("  [2D|3D]random   Uniform random in unit circle/sphere (default 2D)\n");
-        printf("  [2D]circle[P]   Circle radius 1. P = period (default N)\n");
-        printf("  [2D|3D]walk[S]  Random walk in unit circle/sphere. S = step size (default 0.1)\n");
-        printf("  [2D|3D]spiral[L] Spiral. L = loops (default 3)\n");
-        printf("  3Dsphere        Random points on unit sphere surface\n");
+        printf("  [ND]random      Uniform random in unit hypercube/sphere (default 2D)\n");
+        printf("  [ND]sphere      Random points on unit hypersphere surface\n");
+        printf("  [ND]walk[S]     Random walk. S = step size (default 0.1)\n");
         printf("Options:\n");
         printf("  -repeat <M>     Repeat the pattern M times\n");
         printf("  -noise <R>      Add random noise with radius R to each point\n");
@@ -172,26 +180,13 @@ int main(int argc, char *argv[]) {
     // Parse arguments
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "-repeat") == 0) {
-            if (i + 1 < argc) {
-                repeats = atol(argv[++i]);
-            } else {
-                 fprintf(stderr, "Error: Missing value for -repeat\n");
-                 print_args_on_error(argc, argv);
-                 return 1;
-            }
+            repeats = atol(argv[++i]);
         } else if (strcmp(argv[i], "-noise") == 0) {
-            if (i + 1 < argc) {
-                noise_radius = atof(argv[++i]);
-            } else {
-                 fprintf(stderr, "Error: Missing value for -noise\n");
-                 print_args_on_error(argc, argv);
-                 return 1;
-            }
+            noise_radius = atof(argv[++i]);
         } else if (strcmp(argv[i], "-shuffle") == 0) {
             shuffle = 1;
         } else if (argv[i][0] == '-') {
              fprintf(stderr, "Error: Unknown option: %s\n", argv[i]);
-             print_args_on_error(argc, argv);
              return 1;
         } else {
             pattern_str = argv[i];
@@ -203,63 +198,42 @@ int main(int argc, char *argv[]) {
     config.dim = 2;
     config.param = 0.0;
 
-    // Detect Dimension
-    char *name_start = pattern_str;
-    if (strncmp(pattern_str, "2D", 2) == 0) {
+    // Parse dimension [N]D
+    char *dim_end = strchr(pattern_str, 'D');
+    if (dim_end) {
+        *dim_end = '\0';
+        config.dim = atoi(pattern_str);
+        pattern_str = dim_end + 1; // Advance past 'D'
+    } else if (strncmp(pattern_str, "2D", 2) == 0) {
         config.dim = 2;
-        name_start += 2;
+        pattern_str += 2;
     } else if (strncmp(pattern_str, "3D", 2) == 0) {
         config.dim = 3;
-        name_start += 2;
+        pattern_str += 2;
     }
 
+    if (config.dim < 1) config.dim = 2;
+
     // Parse pattern name
-    if (strncmp(name_start, "random", 6) == 0) {
+    if (strncmp(pattern_str, "random", 6) == 0) {
         config.type = GEN_RANDOM;
-    } else if (strncmp(name_start, "circle", 6) == 0) {
-        config.type = GEN_CIRCLE;
-        char *p = name_start + 6;
-        if (*p) config.param = atof(p);
-        else config.param = (double)n_points;
-    } else if (strncmp(name_start, "walk", 4) == 0) {
+    } else if (strncmp(pattern_str, "sphere", 6) == 0) {
+        config.type = GEN_SPHERE;
+    } else if (strncmp(pattern_str, "walk", 4) == 0) {
         config.type = GEN_WALK;
-        char *p = name_start + 4;
+        char *p = pattern_str + 4;
         if (*p) config.param = atof(p);
         else config.param = 0.1;
-    } else if (strncmp(name_start, "spiral", 6) == 0) {
-        config.type = GEN_SPIRAL;
-        char *p = name_start + 6;
+    } else if (strncmp(pattern_str, "circle", 6) == 0) {
+        config.type = GEN_CIRCLE; // Only 2D effectively
+        char *p = pattern_str + 6;
         if (*p) config.param = atof(p);
-        else config.param = 3.0;
-    } else if (strncmp(name_start, "sphere", 6) == 0) {
-        config.type = GEN_SPHERE;
-    } else {
-        // Fallback for aliases or legacy
-        if (strncmp(pattern_str, "circle", 6) == 0) {
-             config.dim = 2;
-             config.type = GEN_CIRCLE;
-             char *p = pattern_str + 6;
-             if (*p) config.param = atof(p);
-             else config.param = (double)n_points;
-        } else if (strncmp(pattern_str, "walk", 4) == 0) {
-             config.dim = 2;
-             config.type = GEN_WALK;
-             char *p = pattern_str + 4;
-             if (*p) config.param = atof(p);
-             else config.param = 0.1;
-        } else if (strncmp(pattern_str, "spiral", 6) == 0) {
-             config.dim = 2;
-             config.type = GEN_SPIRAL;
-             char *p = pattern_str + 6;
-             if (*p) config.param = atof(p);
-             else config.param = 3.0;
-        }
+        else config.param = (double)n_points;
     }
 
     FILE *f = fopen(filename, "w");
     if (!f) {
         perror("Failed to open output file");
-        print_args_on_error(argc, argv);
         return 1;
     }
 
@@ -267,85 +241,49 @@ int main(int argc, char *argv[]) {
 
     long total_points = n_points * repeats;
 
-    // Step 1: Pre-compute the base pattern (N points)
     double *base_buffer = (double *)malloc(n_points * config.dim * sizeof(double));
-    if (!base_buffer) {
-        perror("Memory allocation failed for base buffer");
-        fclose(f);
-        return 1;
-    }
+    double *current_walk = (double *)calloc(config.dim, sizeof(double));
 
-    double x = 0.0, y = 0.0, z = 0.0; // State for walk
     for (long i = 0; i < n_points; i++) {
-        double out_x, out_y, out_z;
+        double *pt = &base_buffer[i * config.dim];
         switch (config.type) {
-            case GEN_CIRCLE:
-                gen_circle(&out_x, &out_y, &out_z, i, config.param, config.dim);
-                break;
             case GEN_WALK:
-                gen_walk(&x, &y, &z, config.param, config.dim); // Updates state
-                out_x = x;
-                out_y = y;
-                out_z = z;
+                gen_walk_point(current_walk, config.param, config.dim);
+                memcpy(pt, current_walk, config.dim * sizeof(double));
                 break;
-            case GEN_SPIRAL:
-                gen_spiral(&out_x, &out_y, &out_z, i, n_points, config.param, config.dim);
+            case GEN_CIRCLE:
+                gen_circle_point(pt, i, config.param, config.dim);
                 break;
             case GEN_SPHERE:
-                gen_sphere(&out_x, &out_y, &out_z, config.dim);
+                gen_sphere_point(pt, config.dim);
                 break;
             case GEN_RANDOM:
             default:
-                gen_random(&out_x, &out_y, &out_z, config.dim);
+                gen_random_point(pt, config.dim);
                 break;
         }
-        base_buffer[i * config.dim + 0] = out_x;
-        base_buffer[i * config.dim + 1] = out_y;
-        if (config.dim == 3) {
-            base_buffer[i * config.dim + 2] = out_z;
-        }
     }
+    free(current_walk);
 
-    // Step 2: Repeat and Apply Noise into Final Buffer
     double *final_buffer = (double *)malloc(total_points * config.dim * sizeof(double));
-    if (!final_buffer) {
-        perror("Memory allocation failed for final buffer");
-        free(base_buffer);
-        fclose(f);
-        return 1;
-    }
 
     for (long r = 0; r < repeats; r++) {
         for (long i = 0; i < n_points; i++) {
             long dest_idx = r * n_points + i;
-
-            double px = base_buffer[i * config.dim + 0];
-            double py = base_buffer[i * config.dim + 1];
-            double pz = (config.dim == 3) ? base_buffer[i * config.dim + 2] : 0.0;
-
-            if (noise_radius > 0.0) {
-                double nx, ny, nz;
-                gen_random(&nx, &ny, &nz, config.dim);
-                px += nx * noise_radius;
-                py += ny * noise_radius;
-                pz += nz * noise_radius;
-            }
-
-            final_buffer[dest_idx * config.dim + 0] = px;
-            final_buffer[dest_idx * config.dim + 1] = py;
-            if (config.dim == 3) {
-                final_buffer[dest_idx * config.dim + 2] = pz;
+            for (int d = 0; d < config.dim; d++) {
+                double val = base_buffer[i * config.dim + d];
+                if (noise_radius > 0.0) {
+                    val += (2.0 * rand_double() - 1.0) * noise_radius; // Uniform noise
+                }
+                final_buffer[dest_idx * config.dim + d] = val;
             }
         }
     }
-
     free(base_buffer);
 
-    // Step 3: Shuffle if requested
     if (shuffle) {
         for (long i = total_points - 1; i > 0; i--) {
             long j = (long)(rand_double() * (i + 1));
-            // Swap point i and j
             for (int d = 0; d < config.dim; d++) {
                 double temp = final_buffer[i * config.dim + d];
                 final_buffer[i * config.dim + d] = final_buffer[j * config.dim + d];
@@ -354,13 +292,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Step 4: Write to file
     for (long i = 0; i < total_points; i++) {
-        if (config.dim == 3) {
-            fprintf(f, "%f %f %f\n", final_buffer[i * 3 + 0], final_buffer[i * 3 + 1], final_buffer[i * 3 + 2]);
-        } else {
-            fprintf(f, "%f %f\n", final_buffer[i * 2 + 0], final_buffer[i * 2 + 1]);
+        for (int d = 0; d < config.dim; d++) {
+            fprintf(f, "%.6f%s", final_buffer[i * config.dim + d], (d == config.dim - 1) ? "" : " ");
         }
+        fprintf(f, "\n");
     }
 
     free(final_buffer);
