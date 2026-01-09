@@ -9,6 +9,7 @@ The algorithm groups frames based on Euclidean distance. Each cluster `cj` is de
 - `Ncl`: Current number of clusters.
 - `prob(cj)`: "Memory" probability of cluster `cj` (prioritizes recently used clusters).
 - `gprob(fi, cj)`: Geometric probability derived from historical distance patterns.
+- `tm(ci, cj)`: Transition matrix count (from `ci` to `cj`).
 
 ## Steps
 
@@ -16,24 +17,52 @@ The algorithm groups frames based on Euclidean distance. Each cluster `cj` is de
 
 Then loop over frame index `fi` until all frames clustered:
 1.  **Normalize Probabilities**: Normalize `prob(cj)` so they sum to 1.0.
-2.  **Rank Candidates**: Sort clusters by total probability.
-    - If `-gprob` is used, rank derived from sorting `prob(cj) * gprob(fi, cj)`
-    - Otherwise,  rank derived from sorting `prob(cj)`.
-3.  **Check Candidates**: Iterate through ranked clusters:
+2.  **Calculate Mixed Probabilities**:
+    - If `-tm <coeff>` is used (coeff > 0):
+      - Compute transition probability `P_trans(cj) = tm(prev_cluster, cj) / sum(tm(prev_cluster, *))`.
+      - Mix: `P_mixed(cj) = (1 - coeff) * prob(cj) + coeff * P_trans(cj)`.
+    - Otherwise, `P_mixed(cj) = prob(cj)`.
+3.  **Rank Candidates**: Sort clusters by total probability.
+    - If `-gprob` is used, rank derived from sorting `P_mixed(cj) * gprob(fi, cj)`
+    - Otherwise, rank derived from sorting `P_mixed(cj)`.
+4.  **Check Candidates**: Iterate through ranked clusters:
     - Compute `dfc(fi, cj)`.
     - If `dfc < rlim` (in cluster):
         - **Assign**: `fi` -> `cj`.
         - **Reward**: `prob(cj) += dprob`.
+        - **Update Transition**: Increment `tm(prev_cluster, cj)`.
         - Update `gprob` history.
         - Proceed to next frame.
     - If `dfc > rlim` (not in cluster):
-        - **Prune**: Use triangle inequality. If `|dcc(cj, cl) - dfc(fi, cj)| > rlim`, cluster `cl` cannot contain `fi`.
-        - If number of possible members is strictly greater than zero, go to step 2
-        - Otherwise, go to step 4
-4.  **Create New Cluster**: If no existing cluster matches:
+        - **Prune (Triangle Inequality)**: If `|dcc(cj, cl) - dfc(fi, cj)| > rlim`, cluster `cl` cannot contain `fi`.
+        - **Prune (4-Point / -te4)**: If enabled, use 2 previous anchors + current anchor + candidate to prune.
+        - **Prune (5-Point / -te5)**: If enabled, use 3 previous anchors + current anchor + candidate to prune.
+        - If number of possible members is strictly greater than zero, go to step 3.
+        - Otherwise, go to step 5.
+5.  **Create New Cluster**: If no existing cluster matches:
     - Create new cluster with `fi` as anchor.
     - Initialize `prob = 1.0`.
     - Compute `dcc` to all existing clusters.
+
+## Pruning Mechanisms
+
+### Triangle Inequality (3-Point)
+Standard pruning using the metric property: `dist(fi, cl) >= |dist(fi, cj) - dist(cj, cl)|`. If the lower bound > `rlim`, `cl` is pruned.
+
+### 4-Point Pruning (`-te4`)
+Uses two previously measured clusters (`c1`, `c2`) relative to the current frame `fi` to prune a candidate `ck`.
+It computes the minimum possible distance `dist(fi, ck)` given the known distances `dist(fi, c1)`, `dist(fi, c2)` and the inter-cluster distances.
+
+### 5-Point Pruning (`-te5`)
+Uses three previously measured clusters (`c1`, `c2`, `c3`) relative to the current frame `fi` to prune a candidate `ck`.
+This establishes a local 3D coordinate system using the three anchors and calculates the geometric lower bound for `dist(fi, ck)`. This is generally more powerful than 3-point or 4-point pruning, especially in higher dimensions where simple triangle inequalities are loose.
+
+## Transition Matrix Mixing (`-tm`)
+
+The `-tm <coeff>` option allows the algorithm to learn the temporal structure of the data.
+- It maintains a transition matrix `tm(from, to)` counting how often cluster `from` is followed by cluster `to`.
+- When ranking candidates for the next frame, it mixes the standard "frequency/recency" probability with the conditional transition probability.
+- `coeff` (0.0 to 1.0) controls the weight. `1.0` means the ranking is driven entirely by the transition history from the previous frame.
 
 ## Identifying and Leveraging Data Patterns
 
