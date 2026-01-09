@@ -24,8 +24,9 @@ This tool is designed for high-speed clustering of sequential image data or high
 1.  **Preprocessing**: Convert frames to downscaled feature vectors (e.g., 64x64 pixels flattened).
 2.  **Run**:
     ```bash
-    ./image_cluster 500.0 video_feats.txt -maxcl 100
+    ./image_cluster 500.0 video_feats.txt -maxcl 100 -tm 0.8
     ```
+    *   `-tm 0.8`: Uses the transition matrix to predict the next scene based on history (80% weight), optimizing speed for structured video.
 3.  **Result**: The tool identifies unique "anchor" frames. Frames within distance `500.0` of an anchor are grouped. You can use the `cluster_counts.txt` to find the most common scenes.
 
 ## 3. Noisy Data Categorization
@@ -48,8 +49,20 @@ This tool is designed for high-speed clustering of sequential image data or high
     ```
     `-gprob` is useful here if the drift is continuous, as it learns the trajectory of the sensor data.
 
+## 4. High-Dimensional / Expensive Metric Clustering
+
+**Scenario**: You are clustering vectors where the distance metric is extremely expensive to compute (or the dimensionality is very high, e.g., >1000).
+
+**Workflow**:
+1.  **Run**:
+    ```bash
+    ./image_cluster <rlim> vectors.txt -te5
+    ```
+    *   `-te5`: Enables 5-point pruning. While this adds CPU overhead per candidate check, it significantly reduces the number of distance calculations (by ~45% in some cases). This is a net win if calculating the distance itself is the bottleneck.
+
 ## Tips for Best Results
 
 *   **Auto-Tuning**: Always start with `-scandist` to understand the scale of distances in your dataset.
 *   **Geometric Probability**: Use `-gprob` for time-series data where the signal evolves smoothly (e.g., drifting sensors, planetary rotation).
+*   **Transition Matrix**: Use `-tm` for data with repeating, predictable sequences (e.g. video loops, cyclic processes).
 *   **Memory**: For extremely large datasets (>1M frames), ensure you have enough RAM as `FrameInfo` stores history for all frames.
