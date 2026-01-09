@@ -20,6 +20,6 @@ jobs:
         uses: Andrew-Chen-Wang/github-wiki-action@v4
         with:
           # Directory containing markdown files from Jules
-          path: docs/ 
+          path: wiki/ 
           # Auto-generated token works if wiki is in same repo
           token: ${{ github.token }} 
