@@ -46,9 +46,6 @@ void gen_random_point(double *out, int dim) {
         out[0] = r * cos(theta);
         out[1] = r * sin(theta);
     } else {
-        // High dim: uniform in hypercube [-1, 1] normalized?
-        // Or just uniform in hypercube [0, 1]?
-        // Let's do uniform in [-1, 1] to simulate feature vectors centered around 0
         for (int d = 0; d < dim; d++) {
             out[d] = 2.0 * rand_double() - 1.0;
         }
@@ -69,10 +66,8 @@ void gen_sphere_point(double *out, int dim) {
         out[0] = cos(theta);
         out[1] = sin(theta);
     } else {
-        // Normal distribution method for N-sphere
         double sum_sq = 0.0;
         for (int d = 0; d < dim; d++) {
-            // Box-Muller for normal dist
             double u1 = rand_double();
             double u2 = rand_double();
             double z = sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
@@ -92,6 +87,23 @@ void gen_circle_point(double *out, long index, double period, int dim) {
     out[0] = cos(theta);
     out[1] = sin(theta);
     for (int d = 2; d < dim; d++) out[d] = 0.0;
+}
+
+void gen_spiral_point(double *out, long index, long total_points, double loops, int dim) {
+    double t = (double)index / (double)total_points;
+    if (dim == 3) {
+        // 3D Spiral (Conical)
+        out[0] = t * cos(2.0 * M_PI * loops * t);
+        out[1] = t * sin(2.0 * M_PI * loops * t);
+        out[2] = 2.0 * t - 1.0; // z from -1 to 1
+        for (int d = 3; d < dim; d++) out[d] = 0.0;
+    } else {
+        double r = t;
+        double theta = 2.0 * M_PI * loops * t;
+        out[0] = r * cos(theta);
+        out[1] = r * sin(theta);
+        for (int d = 2; d < dim; d++) out[d] = 0.0;
+    }
 }
 
 void gen_walk_point(double *current, double step_size, int dim) {
@@ -161,6 +173,8 @@ int main(int argc, char *argv[]) {
         printf("  [ND]random      Uniform random in unit hypercube/sphere (default 2D)\n");
         printf("  [ND]sphere      Random points on unit hypersphere surface\n");
         printf("  [ND]walk[S]     Random walk. S = step size (default 0.1)\n");
+        printf("  [ND]spiral[L]   Spiral. L = loops (default 3.0)\n");
+        printf("  [ND]circle[P]   Circle. P = period\n");
         printf("Options:\n");
         printf("  -repeat <M>     Repeat the pattern M times\n");
         printf("  -noise <R>      Add random noise with radius R to each point\n");
@@ -225,10 +239,15 @@ int main(int argc, char *argv[]) {
         if (*p) config.param = atof(p);
         else config.param = 0.1;
     } else if (strncmp(pattern_str, "circle", 6) == 0) {
-        config.type = GEN_CIRCLE; // Only 2D effectively
+        config.type = GEN_CIRCLE;
         char *p = pattern_str + 6;
         if (*p) config.param = atof(p);
         else config.param = (double)n_points;
+    } else if (strncmp(pattern_str, "spiral", 6) == 0) {
+        config.type = GEN_SPIRAL;
+        char *p = pattern_str + 6;
+        if (*p) config.param = atof(p);
+        else config.param = 3.0;
     }
 
     FILE *f = fopen(filename, "w");
@@ -253,6 +272,9 @@ int main(int argc, char *argv[]) {
                 break;
             case GEN_CIRCLE:
                 gen_circle_point(pt, i, config.param, config.dim);
+                break;
+            case GEN_SPIRAL:
+                gen_spiral_point(pt, i, n_points, config.param, config.dim);
                 break;
             case GEN_SPHERE:
                 gen_sphere_point(pt, config.dim);

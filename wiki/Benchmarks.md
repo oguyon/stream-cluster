@@ -19,8 +19,8 @@ A point moving slowly along a spiral trajectory. This tests the algorithm's "sho
 
 **Result**:
 ![Spiral Slow](images/bench_spiral_slow.png)
-*   **Time**: ~282 ms
-*   **Calls**: ~56.6k (for 10000 frames)
+*   **Time**: ~36 ms
+*   **Calls**: ~14.6k (for 10000 frames)
 
 ## 2. Random Point on 2D Circle
 
