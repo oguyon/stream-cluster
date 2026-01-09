@@ -13,12 +13,13 @@ A point moving slowly along a spiral trajectory. This tests the algorithm's "sho
 
 **Command**:
 ```bash
+./image-cluster-mktxtseq 1000 bench_spiral_slow.txt 2Dspiral3 -noise 0.03
 ./image-cluster 0.1 bench_spiral_slow.txt
 ```
 
 **Result**:
 ![Spiral Slow](images/bench_spiral_slow.png)
-*   **Time**: ~25 ms
+*   **Time**: ~32 ms
 *   **Calls**: ~17k (for 1000 frames)
 
 ## 2. Random Point on 2D Circle
@@ -28,6 +29,7 @@ Points appearing randomly on a unit circle. This demonstrates geometric solving.
 
 **Command**:
 ```bash
+./image-cluster-mktxtseq 1000 bench_circle_rand.txt 2Dcircle -shuffle
 ./image-cluster 0.1 bench_circle_rand.txt
 ```
 
@@ -43,13 +45,14 @@ Points appearing randomly on a spiral. Unlike the circle, the spiral has complex
 
 **Command**:
 ```bash
+./image-cluster-mktxtseq 1000 bench_spiral_rand.txt 2Dspiral3 -shuffle -noise 0.03
 ./image-cluster 0.1 bench_spiral_rand.txt -gprob
 ```
 
 **Result**:
 ![Spiral Random](images/bench_spiral_rand.png)
-*   **Time**: ~16 ms
-*   **Calls**: ~17k.
+*   **Time**: ~21 ms
+*   **Calls**: ~17.6k.
 
 ## 4. Recurring Sequence (`-tm`)
 
@@ -58,6 +61,7 @@ A pattern (circle traversal) that repeats 10 times with noise (`0.04`). This cre
 
 **Command**:
 ```bash
+./image-cluster-mktxtseq 100 bench_recurring.txt 2Dcircle -repeat 10 -noise 0.04
 ./image-cluster 0.1 bench_recurring.txt -tm 1.0
 ```
 
