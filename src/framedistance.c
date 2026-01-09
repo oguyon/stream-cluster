@@ -1,7 +1,10 @@
 #include "common.h"
 #include <math.h>
 #include <stddef.h>
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <immintrin.h>
+#endif
 
 double framedist(Frame *a, Frame *b) {
     if (a->width != b->width || a->height != b->height) {
@@ -16,8 +19,8 @@ double framedist(Frame *a, Frame *b) {
 
     long i = 0;
 
-    // Use AVX2 if supported
-    #ifdef __AVX__
+    // Use AVX2 if supported and on x86
+    #if defined(__AVX__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
     // Process 4 doubles at a time
     if (size >= 4) {
         __m256d sum_vec = _mm256_setzero_pd();
