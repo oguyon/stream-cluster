@@ -56,6 +56,8 @@ void print_usage(char *progname) {
     printf("\n  [Clustering Control]\n");
     printf("  -dprob <val>   Delta probability (default: 0.01)\n");
     printf("  -maxcl <val>   Max number of clusters (default: 1000)\n");
+    printf("  -maxcl_strategy <stop|discard|merge> Strategy when maxcl reached (default: stop)\n");
+    printf("  -discard_frac <val> Fraction of oldest clusters to candidate for discard (default: 0.5)\n");
     printf("  -maxim <val>   Max number of frames (default: 100000)\n");
     printf("  -gprob         Use geometrical probability\n");
     printf("  -fmatcha <val> Set fmatch parameter a (default: 2.0)\n");

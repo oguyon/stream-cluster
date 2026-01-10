@@ -60,6 +60,21 @@ This tool is designed for high-speed clustering of sequential image data or high
     ```
     *   `-te5`: Enables 5-point pruning. While this adds CPU overhead per candidate check, it significantly reduces the number of distance calculations (by ~45% in some cases). This is a net win if calculating the distance itself is the bottleneck.
 
+## 5. Continuous Stream Monitoring (Managing Max Clusters)
+
+**Scenario**: You are processing an infinite stream of data and want to maintain a fixed-size dictionary of clusters (e.g., for vector quantization or anomaly detection) without running out of memory.
+
+**Strategies (`-maxcl_strategy`)**:
+*   **Stop** (default): The program exits when `-maxcl` is reached. Useful for batch processing fixed datasets.
+*   **Discard** (`-maxcl_strategy discard`): When the limit is reached, the algorithm identifies "old" clusters with few members and deletes the smallest one to make room for new data. Discarded frames are logged. This acts like a cache eviction policy.
+*   **Merge** (`-maxcl_strategy merge`): Two closest clusters are merged into one (the larger one absorbs the smaller one). This maintains the number of clusters by aggregating similar concepts.
+
+**Workflow**:
+```bash
+./image_cluster 0.5 stream_data.txt -maxcl 100 -maxcl_strategy discard -discard_frac 0.5
+```
+*   `-discard_frac 0.5`: Only consider the oldest 50% of clusters for deletion, protecting recently created (and potentially growing) clusters.
+
 ## Tips for Best Results
 
 *   **Auto-Tuning**: Always start with `-scandist` to understand the scale of distances in your dataset.
