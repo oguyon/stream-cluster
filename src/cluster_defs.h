@@ -29,7 +29,8 @@ typedef struct {
     int gprob_mode;
     int verbose_level;
     int fitsout_mode;
-    int pngout_mode; // Added pngout flag
+    int pngout_mode;
+    int stream_input_mode; // Added for ImageStreamIO
     double fmatch_a;
     double fmatch_b;
     int max_gprob_visitors;
@@ -42,6 +43,16 @@ typedef struct {
     double tm_mixing_coeff;
     MaxClustStrategy maxcl_strategy;
     double discard_fraction;
+    
+    // Output control flags
+    int output_dcc;
+    int output_tm;
+    int output_anchors;
+    int output_counts;
+    int output_membership;
+    int output_discarded;
+    int output_clustered;
+    int output_clusters; // Controls cluster_X files
 } ClusterConfig;
 
 // VisitorList structure
@@ -65,6 +76,7 @@ typedef struct {
     int *assignments;
     FrameInfo *frame_infos;
     long total_frames_processed;
+    long total_missed_frames; // Added for streaming stats
     FILE *distall_out;
     double *pruned_fraction_sum;
     long *step_counts;

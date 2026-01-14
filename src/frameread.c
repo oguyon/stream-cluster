@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
+#include <time.h>
 
 #ifdef USE_CFITSIO
 #include <fitsio.h>
@@ -12,6 +14,11 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
+#endif
+
+#ifdef USE_IMAGESTREAMIO
+#include <ImageStreamIO/ImageStruct.h>
+#include <ImageStreamIO/ImageStreamIO.h>
 #endif
 
 #ifdef USE_CFITSIO
@@ -33,6 +40,21 @@ static struct SwsContext *sws_ctx = NULL;
 static int is_mp4_mode = 0;
 // Seeking state
 static int internal_mp4_index = 0;
+#endif
+
+// ImageStreamIO State
+#ifdef USE_IMAGESTREAMIO
+static IMAGE stream_image;
+static int is_stream_mode = 0;
+static uint64_t last_cnt0 = 0;
+static int first_stream_frame = 1;
+static long cumulative_missed_frames = 0;
+static long stream_depth = 1;
+static long current_read_slice = 0;
+static long current_write_slice = 0;
+static long stream_read_counter = 0;
+static int is_3d = 0;
+static double cumulative_wait_time_sec = 0.0;
 #endif
 
 static long num_frames = 0;
@@ -198,7 +220,52 @@ static int init_mp4(char *filename) {
 }
 #endif
 
-int init_frameread(char *filename) {
+#ifdef USE_IMAGESTREAMIO
+static int init_stream(char *stream_name) {
+    if (ImageStreamIO_read_sharedmem_image_toIMAGE(stream_name, &stream_image) != 0) {
+        fprintf(stderr, "Error connecting to stream %s\n", stream_name);
+        return -1;
+    }
+    
+    frame_width = stream_image.md[0].size[0];
+    frame_height = stream_image.md[0].size[1];
+    
+    if (stream_image.md[0].naxis > 2) {
+         stream_depth = stream_image.md[0].size[2];
+         is_3d = 1;
+    } else {
+         stream_depth = 1;
+         is_3d = 0;
+    }
+    
+    num_frames = LONG_MAX; // Stream is effectively infinite
+    is_stream_mode = 1;
+    
+    // Initialize state to current stream head
+    last_cnt0 = stream_image.md[0].cnt0;
+    current_read_slice = stream_image.md[0].cnt1;
+    current_write_slice = stream_image.md[0].cnt1;
+    first_stream_frame = 1;
+    stream_read_counter = 0;
+    
+    printf("Connected to stream %s (%ld x %ld x %ld)\n", stream_name, frame_width, frame_height, stream_depth);
+    
+    return 0;
+}
+#endif
+
+int init_frameread(char *filename, int stream_mode) {
+    #ifdef USE_IMAGESTREAMIO
+    if (stream_mode) {
+        return init_stream(filename);
+    }
+    #else
+    if (stream_mode) {
+        fprintf(stderr, "Error: ImageStreamIO support is not compiled in.\n");
+        return -1;
+    }
+    #endif
+
     // Check extension
     char *ext = strrchr(filename, '.');
     if (ext) {
@@ -249,9 +316,13 @@ int init_frameread(char *filename) {
 }
 
 Frame* getframe() {
+    #ifndef USE_IMAGESTREAMIO
     if (current_frame_idx >= num_frames) {
         return NULL;
     }
+    #endif
+    // In stream mode, num_frames is LONG_MAX, so this check passes until limits are hit elsewhere
+    
     return getframe_at(current_frame_idx++);
 }
 
@@ -289,6 +360,104 @@ Frame* getframe_at(long index) {
             }
         }
     }
+    #ifdef USE_IMAGESTREAMIO
+    else if (is_stream_mode) {
+        // Prevent random access / rewinding in stream mode
+        if (index != stream_read_counter) {
+            return NULL;
+        }
+
+        // Wait for new data if we caught up
+        while (stream_image.md[0].cnt0 <= last_cnt0) {
+            struct timespec t0, t1;
+            clock_gettime(CLOCK_MONOTONIC, &t0);
+            int ret = ImageStreamIO_semwait(&stream_image, 0);
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            cumulative_wait_time_sec += (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9;
+            
+            if (ret != 0) {
+                 // Wait failed or interrupt
+                 free(frame_struct->data);
+                 free(frame_struct);
+                 return NULL;
+            }
+        }
+        
+        // We process one frame forward
+        last_cnt0++;
+        stream_read_counter++;
+        
+        if (is_3d) {
+            current_read_slice = (current_read_slice + 1) % stream_depth;
+        } else {
+            // In 2D stream, data is always at 0 (or updated in place)
+            current_read_slice = 0;
+        }
+        
+        // Update stats
+        uint64_t actual_stream_cnt0 = stream_image.md[0].cnt0;
+        current_write_slice = stream_image.md[0].cnt1;
+        
+        // Check for circular buffer overrun
+        if (is_3d) {
+            long lag = (long)(actual_stream_cnt0 - last_cnt0);
+            if (lag >= stream_depth) {
+                fprintf(stderr, "\nError: Circular buffer overrun. Lag (%ld) exceeds depth (%ld). Stopping.\n", lag, stream_depth);
+                free(frame_struct->data);
+                free(frame_struct);
+                return NULL;
+            }
+        }
+        
+        // Pointer offset
+        long offset = current_read_slice * nelements;
+        
+        int dtype = stream_image.md[0].datatype;
+        
+        // DATATYPE definitions from ImageStruct.h usually:
+        // ... (same as before)
+        
+        #define _DATATYPE_UINT8   1
+        #define _DATATYPE_INT8    2
+        #define _DATATYPE_UINT16  3
+        #define _DATATYPE_INT16   4
+        #define _DATATYPE_UINT32  5
+        #define _DATATYPE_INT32   6
+        #define _DATATYPE_UINT64  7
+        #define _DATATYPE_INT64   8
+        #define _DATATYPE_FLOAT   9
+        #define _DATATYPE_DOUBLE  10
+        
+        switch(dtype) {
+            case _DATATYPE_FLOAT:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = (double)((float*)stream_image.array.F)[offset + i];
+                break;
+            case _DATATYPE_DOUBLE:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = ((double*)stream_image.array.D)[offset + i];
+                break;
+            case _DATATYPE_UINT8:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = (double)((uint8_t*)stream_image.array.UI8)[offset + i];
+                break;
+            case _DATATYPE_UINT16:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = (double)((uint16_t*)stream_image.array.UI16)[offset + i];
+                break;
+            case _DATATYPE_INT16:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = (double)((int16_t*)stream_image.array.SI16)[offset + i];
+                break;
+            case _DATATYPE_UINT32:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = (double)((uint32_t*)stream_image.array.UI32)[offset + i];
+                break;
+            case _DATATYPE_INT32:
+                for(long i=0; i<nelements; i++) frame_struct->data[i] = (double)((int32_t*)stream_image.array.SI32)[offset + i];
+                break;
+            default:
+                fprintf(stderr, "Unsupported stream datatype: %d\n", dtype);
+                free(frame_struct->data);
+                free(frame_struct);
+                return NULL;
+        }
+    }
+    #endif
     #ifdef USE_FFMPEG
     else if (is_mp4_mode) {
         // Handle seeking if necessary
@@ -390,6 +559,16 @@ void close_frameread() {
         ascii_line_offsets = NULL;
         is_ascii_mode = 0;
     }
+    #ifdef USE_IMAGESTREAMIO
+    else if (is_stream_mode) {
+        // Detach logic if necessary, though ImageStreamIO typically just unmaps or stays connected.
+        // There isn't a strict "close" that destroys the stream, just detach?
+        // Usually: free(image.array.pointer) if we mapped it manually, but ImageStreamIO manages SHM.
+        // We can just leave it or checking API... ImageStreamIO_closeIm seems not standard.
+        // Usually we just stop using it.
+        is_stream_mode = 0;
+    }
+    #endif
     #ifdef USE_FFMPEG
     else if (is_mp4_mode) {
         avcodec_free_context(&dec_ctx);
@@ -420,10 +599,24 @@ void reset_frameread() {
         internal_mp4_index = 0;
     }
     #endif
+    #ifdef USE_IMAGESTREAMIO
+    if (is_stream_mode) {
+        // Resetting stream read is not typical (it's real time), 
+        // but we can just reset our counter.
+    }
+    #endif
 }
 
 long get_num_frames() {
     return num_frames;
+}
+
+long get_missed_frames() {
+    #ifdef USE_IMAGESTREAMIO
+    return cumulative_missed_frames;
+    #else
+    return 0;
+    #endif
 }
 
 long get_frame_width() {
@@ -433,3 +626,34 @@ long get_frame_width() {
 long get_frame_height() {
     return frame_height;
 }
+
+#ifdef USE_IMAGESTREAMIO
+long get_stream_read_slice() {
+    return current_read_slice;
+}
+
+long get_stream_write_slice() {
+    return current_write_slice;
+}
+
+long get_stream_lag() {
+    if (is_stream_mode) {
+        return (long)(stream_image.md[0].cnt0 - last_cnt0);
+    }
+    return 0;
+}
+
+int is_3d_stream_mode() {
+    return is_3d;
+}
+
+double get_stream_wait_time() {
+    return cumulative_wait_time_sec;
+}
+#else
+long get_stream_read_slice() { return 0; }
+long get_stream_write_slice() { return 0; }
+long get_stream_lag() { return 0; }
+int is_3d_stream_mode() { return 0; }
+double get_stream_wait_time() { return 0.0; }
+#endif

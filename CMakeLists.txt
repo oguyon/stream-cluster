@@ -36,10 +36,20 @@ else()
     message(WARNING "FFmpeg not found. Video input disabled.")
 endif()
 
+# Check for ImageStreamIO via pkg-config
+pkg_check_modules(IMAGESTREAMIO ImageStreamIO)
+if (IMAGESTREAMIO_FOUND)
+    add_definitions(-DUSE_IMAGESTREAMIO)
+    message(STATUS "ImageStreamIO found. Streaming input supported.")
+else()
+    message(WARNING "ImageStreamIO not found. Streaming input disabled.")
+endif()
+
 include_directories(
     ${CFITSIO_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
+    ${IMAGESTREAMIO_INCLUDE_DIRS}
     src
 )
 
@@ -47,6 +57,7 @@ link_directories(
     ${CFITSIO_LIBRARY_DIRS}
     ${PNG_LIBRARY_DIRS}
     ${FFMPEG_LIBRARY_DIRS}
+    ${IMAGESTREAMIO_LIBRARY_DIRS}
 )
 
 # Sources
@@ -57,8 +68,11 @@ target_link_libraries(image-cluster
     ${CFITSIO_LIBRARIES}
     ${PNG_LIBRARIES}
     ${FFMPEG_LIBRARIES}
+    ${IMAGESTREAMIO_LIBRARIES}
     m
 )
+
+
 
 add_executable(image-cluster-mktxtseq src/mktestseq.c)
 target_link_libraries(image-cluster-mktxtseq m)
@@ -68,3 +82,6 @@ target_link_libraries(image-cluster-plot ${PNG_LIBRARIES} m)
 
 add_executable(image-cluster-NDmodel src/model_nd.c)
 target_link_libraries(image-cluster-NDmodel m)
+
+add_executable(txt2mp4 src/txt2mp4.c)
+target_link_libraries(txt2mp4 m)

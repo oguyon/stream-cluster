@@ -40,7 +40,7 @@ char* create_output_dir_name(const char* input_file) {
 }
 
 void print_usage(char *progname) {
-    printf("Usage: %s <rlim> [options] <input_file>\n", progname);
+    printf("Usage: %s <rlim> [options] <input_file|stream_name>\n", progname);
     printf("Arguments:\n");
     printf("  <rlim>         Clustering radius limit.\n");
     printf("  <input_file>   Input file (ASCII");
@@ -50,7 +50,7 @@ void print_usage(char *progname) {
     #ifdef USE_FFMPEG
     printf(", MP4");
     #endif
-    printf(").\n");
+    printf(") or stream name.\n");
     printf("Options:\n");
 
     printf("\n  [Clustering Control]\n");
@@ -60,6 +60,11 @@ void print_usage(char *progname) {
     printf("  -discard_frac <val> Fraction of oldest clusters to candidate for discard (default: 0.5)\n");
     printf("  -maxim <val>   Max number of frames (default: 100000)\n");
     printf("  -gprob         Use geometrical probability\n");
+    printf("  -stream        Input is an ImageStreamIO stream");
+    #ifndef USE_IMAGESTREAMIO
+    printf(" [DISABLED]");
+    #endif
+    printf("\n");
     printf("  -fmatcha <val> Set fmatch parameter a (default: 2.0)\n");
     printf("  -fmatchb <val> Set fmatch parameter b (default: 0.5)\n");
     printf("  -maxvis <val>  Max visitors for gprob history (default: 1000)\n");
@@ -84,6 +89,14 @@ void print_usage(char *progname) {
     printf(" [DISABLED]");
     #endif
     printf("\n");
+    printf("  -no_dcc        Disable dcc.txt output (default: enabled)\n");
+    printf("  -no_tm         Disable transition_matrix.txt output (default: enabled)\n");
+    printf("  -no_anchors    Disable anchors output (default: enabled)\n");
+    printf("  -no_counts     Disable cluster_counts.txt output (default: enabled)\n");
+    printf("  -no_membership Disable frame_membership.txt output (default: enabled)\n");
+    printf("  -no_discarded  Disable discarded_frames.txt output (default: enabled)\n");
+    printf("  -no_clustered  Disable *.clustered.txt output (default: enabled)\n");
+    printf("  -no_clusters   Disable individual cluster files (cluster_X) (default: enabled)\n");
 }
 
 void write_results(ClusterConfig *config, ClusterState *state) {
@@ -96,20 +109,24 @@ void write_results(ClusterConfig *config, ClusterState *state) {
     char out_path[4096];
 
     // Write dcc.txt
-    snprintf(out_path, sizeof(out_path), "%s/dcc.txt", out_dir);
-    FILE *dcc_out = fopen(out_path, "w");
-    if (dcc_out) {
-        for (int i = 0; i < state->num_clusters; i++) {
-            for (int j = 0; j < state->num_clusters; j++) {
-                double d = state->dccarray[i * config->maxnbclust + j];
-                if (d >= 0) fprintf(dcc_out, "%d %d %.6f\n", i, j, d);
+    if (config->output_dcc) {
+        printf("Writing dcc.txt\n");
+        snprintf(out_path, sizeof(out_path), "%s/dcc.txt", out_dir);
+        FILE *dcc_out = fopen(out_path, "w");
+        if (dcc_out) {
+            for (int i = 0; i < state->num_clusters; i++) {
+                for (int j = 0; j < state->num_clusters; j++) {
+                    double d = state->dccarray[i * config->maxnbclust + j];
+                    if (d >= 0) fprintf(dcc_out, "%d %d %.6f\n", i, j, d);
+                }
             }
+            fclose(dcc_out);
         }
-        fclose(dcc_out);
     }
 
     // Write Transition Matrix
-    if (state->transition_matrix) {
+    if (config->output_tm && state->transition_matrix) {
+        printf("Writing transition_matrix.txt\n");
         snprintf(out_path, sizeof(out_path), "%s/transition_matrix.txt", out_dir);
         FILE *tm_out = fopen(out_path, "w");
         if (tm_out) {
@@ -130,52 +147,55 @@ void write_results(ClusterConfig *config, ClusterState *state) {
     long height = get_frame_height();
     long nelements = width * height;
 
-    if (config->pngout_mode) {
-        #ifdef USE_PNG
-        for (int i = 0; i < state->num_clusters; i++) {
-            snprintf(out_path, sizeof(out_path), "%s/anchor_%04d.png", out_dir, i);
-            write_png_frame(out_path, state->clusters[i].anchor.data, width, height);
-        }
-        #else
-        fprintf(stderr, "Warning: PNG output requested but not compiled in.\n");
-        #endif
-    } else if (is_ascii_input_mode() && !config->fitsout_mode) {
-        snprintf(out_path, sizeof(out_path), "%s/anchors.txt", out_dir);
-        FILE *afptr = fopen(out_path, "w");
-        if (afptr) {
+    if (config->output_anchors) {
+        printf("Writing anchors\n");
+        if (config->pngout_mode) {
+            #ifdef USE_PNG
             for (int i = 0; i < state->num_clusters; i++) {
-                for (long k = 0; k < nelements; k++) fprintf(afptr, "%f ", state->clusters[i].anchor.data[k]);
-                fprintf(afptr, "\n");
+                snprintf(out_path, sizeof(out_path), "%s/anchor_%04d.png", out_dir, i);
+                write_png_frame(out_path, state->clusters[i].anchor.data, width, height);
             }
-            fclose(afptr);
-        }
-    } else {
-        #ifdef USE_CFITSIO
-        int status = 0;
-        fitsfile *afptr;
-        snprintf(out_path, sizeof(out_path), "!%s/anchors.fits", out_dir);
-        fits_create_file(&afptr, out_path, &status);
-        long naxes[3] = { width, height, state->num_clusters };
-        fits_create_img(afptr, DOUBLE_IMG, 3, naxes, &status);
-        for (int i = 0; i < state->num_clusters; i++) {
-            long fpixel[3] = {1, 1, i + 1};
-            fits_write_pix(afptr, TDOUBLE, fpixel, nelements, state->clusters[i].anchor.data, &status);
-        }
-        fits_close_file(afptr, &status);
-        #else
-        // Fallback to text if fits disabled but requested?
-        fprintf(stderr, "Warning: FITS output requested but not compiled in. Saving as ASCII.\n");
-        // Reuse ASCII logic
-        snprintf(out_path, sizeof(out_path), "%s/anchors.txt", out_dir);
-        FILE *afptr = fopen(out_path, "w");
-        if (afptr) {
+            #else
+            fprintf(stderr, "Warning: PNG output requested but not compiled in.\n");
+            #endif
+        } else if (is_ascii_input_mode() && !config->fitsout_mode) {
+            snprintf(out_path, sizeof(out_path), "%s/anchors.txt", out_dir);
+            FILE *afptr = fopen(out_path, "w");
+            if (afptr) {
+                for (int i = 0; i < state->num_clusters; i++) {
+                    for (long k = 0; k < nelements; k++) fprintf(afptr, "%f ", state->clusters[i].anchor.data[k]);
+                    fprintf(afptr, "\n");
+                }
+                fclose(afptr);
+            }
+        } else {
+            #ifdef USE_CFITSIO
+            int status = 0;
+            fitsfile *afptr;
+            snprintf(out_path, sizeof(out_path), "!%s/anchors.fits", out_dir);
+            fits_create_file(&afptr, out_path, &status);
+            long naxes[3] = { width, height, state->num_clusters };
+            fits_create_img(afptr, DOUBLE_IMG, 3, naxes, &status);
             for (int i = 0; i < state->num_clusters; i++) {
-                for (long k = 0; k < nelements; k++) fprintf(afptr, "%f ", state->clusters[i].anchor.data[k]);
-                fprintf(afptr, "\n");
+                long fpixel[3] = {1, 1, i + 1};
+                fits_write_pix(afptr, TDOUBLE, fpixel, nelements, state->clusters[i].anchor.data, &status);
             }
-            fclose(afptr);
+            fits_close_file(afptr, &status);
+            #else
+            // Fallback to text if fits disabled but requested?
+            fprintf(stderr, "Warning: FITS output requested but not compiled in. Saving as ASCII.\n");
+            // Reuse ASCII logic
+            snprintf(out_path, sizeof(out_path), "%s/anchors.txt", out_dir);
+            FILE *afptr = fopen(out_path, "w");
+            if (afptr) {
+                for (int i = 0; i < state->num_clusters; i++) {
+                    for (long k = 0; k < nelements; k++) fprintf(afptr, "%f ", state->clusters[i].anchor.data[k]);
+                    fprintf(afptr, "\n");
+                }
+                fclose(afptr);
+            }
+            #endif
         }
-        #endif
     }
 
     // Cluster Counts
@@ -184,27 +204,43 @@ void write_results(ClusterConfig *config, ClusterState *state) {
         if (state->assignments[i] >= 0 && state->assignments[i] < state->num_clusters)
             cluster_counts[state->assignments[i]]++;
     }
-    snprintf(out_path, sizeof(out_path), "%s/cluster_counts.txt", out_dir);
-    FILE *count_out = fopen(out_path, "w");
-    if (count_out) {
-        for (int c = 0; c < state->num_clusters; c++) fprintf(count_out, "Cluster %d: %d frames\n", c, cluster_counts[c]);
-        fclose(count_out);
+    if (config->output_counts) {
+        printf("Writing cluster_counts.txt\n");
+        snprintf(out_path, sizeof(out_path), "%s/cluster_counts.txt", out_dir);
+        FILE *count_out = fopen(out_path, "w");
+        if (count_out) {
+            for (int c = 0; c < state->num_clusters; c++) fprintf(count_out, "Cluster %d: %d frames\n", c, cluster_counts[c]);
+            fclose(count_out);
+        }
     }
-
-    printf("Writing cluster files...\n");
 
     // Average buffer
     double *avg_buffer = NULL;
     if (config->average_mode) avg_buffer = (double *)calloc(nelements, sizeof(double));
+
+    int active_cluster_count = 0;
+    for (int c = 0; c < state->num_clusters; c++) {
+        if (cluster_counts[c] > 0) active_cluster_count++;
+    }
+
+    if (config->output_clusters) {
+        printf("Writing cluster files (%d files)\n", active_cluster_count);
+    }
+
+    if (config->average_mode) {
+        printf("Writing average cluster files\n");
+    }
 
     if (config->pngout_mode) {
         #ifdef USE_PNG
         for (int c = 0; c < state->num_clusters; c++) {
             if (cluster_counts[c] == 0) continue;
 
-            char cluster_dir[1024];
-            snprintf(cluster_dir, sizeof(cluster_dir), "%s/cluster_%04d", out_dir, c);
-            mkdir(cluster_dir, 0777);
+            if (config->output_clusters) {
+                char cluster_dir[1024];
+                snprintf(cluster_dir, sizeof(cluster_dir), "%s/cluster_%04d", out_dir, c);
+                mkdir(cluster_dir, 0777);
+            }
 
             if (config->average_mode) for (long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
 
@@ -212,8 +248,12 @@ void write_results(ClusterConfig *config, ClusterState *state) {
                 if (state->assignments[f] == c) {
                     Frame *fr = getframe_at(f);
                     if (fr) {
-                        snprintf(out_path, sizeof(out_path), "%s/frame%05ld.png", cluster_dir, f);
-                        write_png_frame(out_path, fr->data, width, height);
+                        if (config->output_clusters) {
+                            char cluster_dir[1024];
+                            snprintf(cluster_dir, sizeof(cluster_dir), "%s/cluster_%04d", out_dir, c);
+                            snprintf(out_path, sizeof(out_path), "%s/frame%05ld.png", cluster_dir, f);
+                            write_png_frame(out_path, fr->data, width, height);
+                        }
                         if (config->average_mode) for (long k=0; k<nelements; k++) avg_buffer[k] += fr->data[k];
                         free_frame(fr);
                     }
@@ -238,9 +278,14 @@ void write_results(ClusterConfig *config, ClusterState *state) {
                 if (avg_file) { for(long k=0; k<nelements; k++) fprintf(avg_file, "0.0 "); fprintf(avg_file, "\n"); }
                 continue;
             }
-            char fname[1024];
-            snprintf(fname, sizeof(fname), "%s/cluster_%d.txt", out_dir, c);
-            FILE *cfptr = fopen(fname, "w");
+            
+            FILE *cfptr = NULL;
+            if (config->output_clusters) {
+                char fname[1024];
+                snprintf(fname, sizeof(fname), "%s/cluster_%d.txt", out_dir, c);
+                cfptr = fopen(fname, "w");
+            }
+            
             if (config->average_mode) for(long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
             for (long f = 0; f < state->total_frames_processed; f++) {
                 if (state->assignments[f] == c) {
@@ -275,27 +320,33 @@ void write_results(ClusterConfig *config, ClusterState *state) {
         }
         for (int c = 0; c < state->num_clusters; c++) {
             if (cluster_counts[c] == 0) continue;
-            char fname[1024];
-            snprintf(fname, sizeof(fname), "!%s/cluster_%d.fits", out_dir, c);
-            fitsfile *cfptr;
-            fits_create_file(&cfptr, fname, &status);
-            long cnaxes[3] = { width, height, cluster_counts[c] };
-            fits_create_img(cfptr, DOUBLE_IMG, 3, cnaxes, &status);
+            
+            fitsfile *cfptr = NULL;
+            if (config->output_clusters) {
+                char fname[1024];
+                snprintf(fname, sizeof(fname), "!%s/cluster_%d.fits", out_dir, c);
+                fits_create_file(&cfptr, fname, &status);
+                long cnaxes[3] = { width, height, cluster_counts[c] };
+                fits_create_img(cfptr, DOUBLE_IMG, 3, cnaxes, &status);
+            }
+
             if (config->average_mode) for(long k=0; k<nelements; k++) avg_buffer[k] = 0.0;
             int fr_count = 0;
             for (long f = 0; f < state->total_frames_processed; f++) {
                 if (state->assignments[f] == c) {
                     Frame *fr = getframe_at(f);
                     if (fr) {
-                        long fpixel[3] = {1, 1, fr_count + 1};
-                        fits_write_pix(cfptr, TDOUBLE, fpixel, nelements, fr->data, &status);
+                        if (cfptr) {
+                            long fpixel[3] = {1, 1, fr_count + 1};
+                            fits_write_pix(cfptr, TDOUBLE, fpixel, nelements, fr->data, &status);
+                        }
                         if(config->average_mode) for(long k=0; k<nelements; k++) avg_buffer[k] += fr->data[k];
                         free_frame(fr);
                         fr_count++;
                     }
                 }
             }
-            fits_close_file(cfptr, &status);
+            if (cfptr) fits_close_file(cfptr, &status);
             if (config->average_mode && avg_ptr) {
                 for(long k=0; k<nelements; k++) avg_buffer[k] /= cluster_counts[c];
                 long fpixel[3] = {1, 1, c + 1};
@@ -311,60 +362,63 @@ void write_results(ClusterConfig *config, ClusterState *state) {
 
     if (avg_buffer) free(avg_buffer);
 
-    char *clustered_fname = (char *)malloc(strlen(config->fits_filename) + 20);
-    strcpy(clustered_fname, config->fits_filename);
-    char *ext = strrchr(clustered_fname, '.');
-    if (ext && strcmp(ext, ".txt") == 0) strcpy(ext, ".clustered.txt");
-    else strcat(clustered_fname, ".clustered.txt");
+    if (config->output_clustered) {
+        printf("Writing clustered output file\n");
+        char *clustered_fname = (char *)malloc(strlen(config->fits_filename) + 20);
+        strcpy(clustered_fname, config->fits_filename);
+        char *ext = strrchr(clustered_fname, '.');
+        if (ext && strcmp(ext, ".txt") == 0) strcpy(ext, ".clustered.txt");
+        else strcat(clustered_fname, ".clustered.txt");
 
-    FILE *clustered_out = fopen(clustered_fname, "w");
-    if (clustered_out) {
-        fprintf(clustered_out, "# Parameters:\n");
-        fprintf(clustered_out, "# rlim %.6f\n", config->rlim);
-        fprintf(clustered_out, "# dprob %.6f\n", config->deltaprob);
-        fprintf(clustered_out, "# maxcl %d\n", config->maxnbclust);
-        fprintf(clustered_out, "# maxim %ld\n", config->maxnbfr);
-        fprintf(clustered_out, "# gprob_mode %d\n", config->gprob_mode);
-        fprintf(clustered_out, "# fmatcha %.2f\n", config->fmatch_a);
-        fprintf(clustered_out, "# fmatchb %.2f\n", config->fmatch_b);
+        FILE *clustered_out = fopen(clustered_fname, "w");
+        if (clustered_out) {
+            fprintf(clustered_out, "# Parameters:\n");
+            fprintf(clustered_out, "# rlim %.6f\n", config->rlim);
+            fprintf(clustered_out, "# dprob %.6f\n", config->deltaprob);
+            fprintf(clustered_out, "# maxcl %d\n", config->maxnbclust);
+            fprintf(clustered_out, "# maxim %ld\n", config->maxnbfr);
+            fprintf(clustered_out, "# gprob_mode %d\n", config->gprob_mode);
+            fprintf(clustered_out, "# fmatcha %.2f\n", config->fmatch_a);
+            fprintf(clustered_out, "# fmatchb %.2f\n", config->fmatch_b);
 
-        fprintf(clustered_out, "# Stats:\n");
-        fprintf(clustered_out, "# Total Clusters %d\n", state->num_clusters);
-        fprintf(clustered_out, "# Total Distance Computations %ld\n", state->framedist_calls);
-        fprintf(clustered_out, "# Clusters Pruned %ld\n", state->clusters_pruned);
-        double avg_dist = (state->total_frames_processed > 0) ? (double)state->framedist_calls / state->total_frames_processed : 0.0;
-        fprintf(clustered_out, "# Avg Dist/Frame %.2f\n", avg_dist);
+            fprintf(clustered_out, "# Stats:\n");
+            fprintf(clustered_out, "# Total Clusters %d\n", state->num_clusters);
+            fprintf(clustered_out, "# Total Distance Computations %ld\n", state->framedist_calls);
+            fprintf(clustered_out, "# Clusters Pruned %ld\n", state->clusters_pruned);
+            double avg_dist = (state->total_frames_processed > 0) ? (double)state->framedist_calls / state->total_frames_processed : 0.0;
+            fprintf(clustered_out, "# Avg Dist/Frame %.2f\n", avg_dist);
 
-        if (state->pruned_fraction_sum && state->step_counts) {
-            for (int k = 0; k < state->max_steps_recorded; k++) {
-                if (state->step_counts[k] > 0) {
-                    fprintf(clustered_out, "# Pruning Step %d: %.4f\n", k, state->pruned_fraction_sum[k] / state->step_counts[k]);
-                } else if (k > 0 && state->step_counts[k] == 0) {
-                    break;
+            if (state->pruned_fraction_sum && state->step_counts) {
+                for (int k = 0; k < state->max_steps_recorded; k++) {
+                    if (state->step_counts[k] > 0) {
+                        fprintf(clustered_out, "# Pruning Step %d: %.4f\n", k, state->pruned_fraction_sum[k] / state->step_counts[k]);
+                    } else if (k > 0 && state->step_counts[k] == 0) {
+                        break;
+                    }
                 }
             }
-        }
 
-        int next_new_cluster = 0;
-        for (long i = 0; i < state->total_frames_processed; i++) {
-            int assigned = state->assignments[i];
-            if (assigned == next_new_cluster) {
-                fprintf(clustered_out, "# NEWCLUSTER %d %ld ", assigned, i);
-                for (long k = 0; k < nelements; k++) fprintf(clustered_out, "%f ", state->clusters[assigned].anchor.data[k]);
-                fprintf(clustered_out, "\n");
-                next_new_cluster++;
+            int next_new_cluster = 0;
+            for (long i = 0; i < state->total_frames_processed; i++) {
+                int assigned = state->assignments[i];
+                if (assigned == next_new_cluster) {
+                    fprintf(clustered_out, "# NEWCLUSTER %d %ld ", assigned, i);
+                    for (long k = 0; k < nelements; k++) fprintf(clustered_out, "%f ", state->clusters[assigned].anchor.data[k]);
+                    fprintf(clustered_out, "\n");
+                    next_new_cluster++;
+                }
+                Frame *fr = getframe_at(i);
+                if (fr) {
+                    fprintf(clustered_out, "%ld %d ", i, assigned);
+                    for (long k = 0; k < nelements; k++) fprintf(clustered_out, "%f ", fr->data[k]);
+                    fprintf(clustered_out, "\n");
+                    free_frame(fr);
+                }
             }
-            Frame *fr = getframe_at(i);
-            if (fr) {
-                fprintf(clustered_out, "%ld %d ", i, assigned);
-                for (long k = 0; k < nelements; k++) fprintf(clustered_out, "%f ", fr->data[k]);
-                fprintf(clustered_out, "\n");
-                free_frame(fr);
-            }
+            fclose(clustered_out);
         }
-        fclose(clustered_out);
+        free(clustered_fname);
     }
-    free(clustered_fname);
     free(cluster_counts);
     free(out_dir);
 }

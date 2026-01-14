@@ -369,7 +369,7 @@ static void remove_cluster(ClusterState *state, ClusterConfig *config, int index
     // For 'ClusterState' internal consistency (transition matrix, gprob), we accept that history for C_rem is gone.
 
     // Log dropped frames if discard
-    if (index_target == -1) {
+    if (index_target == -1 && config->output_discarded) {
         FILE *log = fopen("discarded_frames.txt", "a");
         if (log) {
             fprintf(log, "# Discarded Cluster %d\n", index_to_remove);
@@ -543,22 +543,25 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     // For sorting candidates when transition matrix is used
     Candidate *sorting_candidates = (Candidate *)malloc(config->maxnbclust * sizeof(Candidate));
 
-    char *out_dir = NULL;
-    char out_path[1024];
-    if (config->user_outdir) {
-        snprintf(out_path, sizeof(out_path), "%s/frame_membership.txt", config->user_outdir);
-    } else {
-        snprintf(out_path, sizeof(out_path), "frame_membership.txt");
-    }
+    FILE *ascii_out = NULL;
+    if (config->output_membership) {
+        char out_path[1024];
+        if (config->user_outdir) {
+            snprintf(out_path, sizeof(out_path), "%s/frame_membership.txt", config->user_outdir);
+        } else {
+            snprintf(out_path, sizeof(out_path), "frame_membership.txt");
+        }
 
-    FILE *ascii_out = fopen(out_path, "w");
-    if (!ascii_out) {
-        perror("Failed to open frame_membership.txt");
+        ascii_out = fopen(out_path, "w");
+        if (!ascii_out) {
+            perror("Failed to open frame_membership.txt");
+        }
     }
 
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
+    long prev_missed_frames = 0;
     int prev_assigned_cluster = -1;
     Frame *current_frame;
     while ((current_frame = getframe()) != NULL) {
@@ -1148,10 +1151,35 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
         state->total_frames_processed++;
 
         if (config->progress_mode && (state->total_frames_processed % 10 == 0 || state->total_frames_processed == actual_frames)) {
+            state->total_missed_frames = get_missed_frames();
             double avg_dists = (state->total_frames_processed > 0) ? (double)state->framedist_calls / state->total_frames_processed : 0.0;
-            printf("\rProcessing frame %ld / %ld (Clusters: %d, Dists: %ld, Avg Dists/Frame: %.1f, Pruned: %ld)",
+            
+            printf("\rProcessing frame %ld / %ld (Clusters: %d, Dists: %ld, Avg Dists/Frame: %.1f, Pruned: %ld, ",
                    state->total_frames_processed, actual_frames, state->num_clusters, state->framedist_calls, avg_dists, state->clusters_pruned);
+            
+            if (state->total_missed_frames > prev_missed_frames) {
+                printf("\x1b[1;37;41mMissed: %ld\x1b[0m", state->total_missed_frames);
+            } else {
+                printf("Missed: %ld", state->total_missed_frames);
+            }
+            
+            if (config->stream_input_mode) {
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                double total_elapsed = (now.tv_sec - start.tv_sec) + (now.tv_nsec - start.tv_nsec) / 1e9;
+                double wait_time = get_stream_wait_time();
+                double wait_frac = (total_elapsed > 0) ? (wait_time / total_elapsed * 100.0) : 0.0;
+                printf(", Wait: %.1f%%", wait_frac);
+            }
+
+            if (is_3d_stream_mode()) {
+                 printf(", Slice: %ld/%ld, Lag: %ld", get_stream_read_slice(), get_stream_write_slice(), get_stream_lag());
+            }
+            
+            printf(")");
             fflush(stdout);
+            
+            prev_missed_frames = state->total_missed_frames;
         }
     }
 
