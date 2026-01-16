@@ -10,12 +10,44 @@ This file compiles tests and benchmarks for the image-cluster program, with a sh
 
 ## 2D spiral
 
-In this first test, a 2D point moves outward in a spiral pattern.
+In this first test, a 2D point slowly oves outward in a spiral pattern.
+
 ```
-./runbenchmark -p 2Dspiral
+./image-cluster-mktxtseq 20000 2Dspiral.txt 2Dspiral
+# OUTPUT:
+# 2Dspiral.txt
 ```
 
 
+
+### txt output (2D)
+```
+./image-cluster 0.1 2Dspiral.txt
+# OUTPUT:
+
+```
+
+
+
+
+### Image output 
+
+Write 2D spot to stream, with cnt2sync:
+```
+ascii-spot-2-video 256 0.1 2Dspiral.txt spot2d -isio -cnt2sync
+```
+
+Then run clustering:
+```
+image-cluster 0.1 -stream -cmt2sync spot2d
+```
+
+0.1 2600
+0.2 2370
+0.4 1450
+0.8  520
+1.0  350
+1.2  250
 
 
 
