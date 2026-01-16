@@ -58,45 +58,8 @@ int main(int argc, char *argv[]) {
     config.output_clustered = 0;
     config.output_clusters = 0;
 
-    // First pass: Detect -scandist
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-scandist") == 0) {
-            config.scandist_mode = 1;
-            break;
-        }
-    }
-
     int arg_idx = 1;
-
-    if (!config.scandist_mode) {
-        if (argv[1][0] == 'a') {
-            char *endptr;
-            config.auto_rlim_factor = strtod(argv[1] + 1, &endptr);
-            if (*endptr != '\0') {
-                 fprintf(stderr, "Error: Invalid format for auto-rlim. Expected 'a<float>', got '%s'\n", argv[1]);
-                 print_args_on_error(argc, argv);
-                 return 1;
-            }
-            config.auto_rlim_mode = 1;
-            arg_idx = 2;
-        } else if (argv[1][0] == '-') {
-            fprintf(stderr, "Error: First argument must be rlim (numerical value) or auto-rlim (a<val>), found option: %s\n", argv[1]);
-            print_usage(argv[0]);
-            print_args_on_error(argc, argv);
-            return 1;
-        } else {
-            char *endptr;
-            config.rlim = strtod(argv[1], &endptr);
-            if (*endptr != '\0') {
-                 fprintf(stderr, "Error: Invalid rlim value: %s\n", argv[1]);
-                 print_args_on_error(argc, argv);
-                 return 1;
-            }
-            arg_idx = 2;
-        }
-    } else {
-        arg_idx = 1;
-    }
+    int rlim_set = 0;
 
     while (arg_idx < argc) {
         if (strcmp(argv[arg_idx], "-dprob") == 0) {
@@ -180,19 +143,41 @@ int main(int argc, char *argv[]) {
                 sscanf(params, "%d,%d,%d", &config.pred_len, &config.pred_h, &config.pred_n);
             }
         } else if (strcmp(argv[arg_idx], "-scandist") == 0) {
-            // Already handled
+            config.scandist_mode = 1;
         } else if (argv[arg_idx][0] == '-') {
             fprintf(stderr, "Error: Unknown option: %s\n", argv[arg_idx]);
             print_usage(argv[0]);
             print_args_on_error(argc, argv);
             return 1;
         } else {
-            if (config.fits_filename != NULL) {
-                fprintf(stderr, "Error: Too many arguments or multiple input files specified (already have '%s', found '%s')\n", config.fits_filename, argv[arg_idx]);
-                print_args_on_error(argc, argv);
-                return 1;
+            if (!config.scandist_mode && !rlim_set) {
+                if (argv[arg_idx][0] == 'a') {
+                    char *endptr;
+                    config.auto_rlim_factor = strtod(argv[arg_idx] + 1, &endptr);
+                    if (*endptr != '\0') {
+                         fprintf(stderr, "Error: Invalid format for auto-rlim. Expected 'a<float>', got '%s'\n", argv[arg_idx]);
+                         print_args_on_error(argc, argv);
+                         return 1;
+                    }
+                    config.auto_rlim_mode = 1;
+                } else {
+                    char *endptr;
+                    config.rlim = strtod(argv[arg_idx], &endptr);
+                    if (*endptr != '\0') {
+                         fprintf(stderr, "Error: Invalid rlim value: %s\n", argv[arg_idx]);
+                         print_args_on_error(argc, argv);
+                         return 1;
+                    }
+                }
+                rlim_set = 1;
+            } else {
+                if (config.fits_filename != NULL) {
+                    fprintf(stderr, "Error: Too many arguments or multiple input files specified (already have '%s', found '%s')\n", config.fits_filename, argv[arg_idx]);
+                    print_args_on_error(argc, argv);
+                    return 1;
+                }
+                config.fits_filename = argv[arg_idx];
             }
-            config.fits_filename = argv[arg_idx];
         }
         arg_idx++;
     }

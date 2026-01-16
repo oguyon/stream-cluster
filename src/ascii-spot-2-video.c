@@ -17,7 +17,7 @@ void clamp(int *val) {
 }
 
 void print_help(const char *progname) {
-    printf("Usage: %s <pixel_size> <alpha> <input.txt> <output> [noise_level] [max_frames] [options]\n\n", progname);
+    printf("Usage: %s [options] <pixel_size> <alpha> <input.txt> <output> [noise_level] [max_frames]\n\n", progname);
     printf("Description:\n");
     printf("  Converts a coordinate text file into an MP4 video sequence or ImageStreamIO stream.\n");
     printf("  Each line in the input file corresponds to one video frame.\n\n");

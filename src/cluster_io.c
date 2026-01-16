@@ -40,7 +40,7 @@ char* create_output_dir_name(const char* input_file) {
 }
 
 void print_usage(char *progname) {
-    printf("Usage: %s <rlim> [options] <input_file|stream_name>\n", progname);
+    printf("Usage: %s [options] <rlim> <input_file|stream_name>\n", progname);
     printf("Arguments:\n");
     printf("  <rlim>         Clustering radius limit.\n");
     printf("  <input_file>   Input file (ASCII");
