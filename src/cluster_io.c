@@ -436,7 +436,7 @@ void write_results(ClusterConfig *config, ClusterState *state) {
     free(out_dir);
 }
 
-void write_run_log(ClusterConfig *config, ClusterState *state, const char *cmdline, struct timespec start_ts, double clust_ms, double out_ms) {
+void write_run_log(ClusterConfig *config, ClusterState *state, const char *cmdline, struct timespec start_ts, double clust_ms, double out_ms, long max_rss) {
     char *out_dir = NULL;
     if (config->user_outdir) out_dir = strdup(config->user_outdir);
     else out_dir = create_output_dir_name(config->fits_filename);
@@ -487,6 +487,7 @@ void write_run_log(ClusterConfig *config, ClusterState *state, const char *cmdli
         fprintf(f, "STATS_FRAMES: %ld\n", state->total_frames_processed);
         fprintf(f, "STATS_DISTS: %ld\n", state->framedist_calls);
         fprintf(f, "STATS_PRUNED: %ld\n", state->clusters_pruned);
+        fprintf(f, "STATS_MAX_RSS_KB: %ld\n", max_rss);
 
         fprintf(f, "STATS_DIST_HIST_START\n");
         for (int k = 0; k <= config->maxnbclust; k++) {

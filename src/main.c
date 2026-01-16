@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/resource.h>
 #include "cluster_defs.h"
 #include "cluster_core.h"
 #include "cluster_io.h"
@@ -300,7 +301,13 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &out_end);
     double out_ms = (out_end.tv_sec - out_start.tv_sec) * 1000.0 + (out_end.tv_nsec - out_start.tv_nsec) / 1000000.0;
 
-    write_run_log(&config, &state, cmdline, prog_start, clust_ms, out_ms);
+    struct rusage usage;
+    long max_rss = 0;
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+        max_rss = usage.ru_maxrss;
+    }
+
+    write_run_log(&config, &state, cmdline, prog_start, clust_ms, out_ms, max_rss);
     if (cmdline) free(cmdline);
 
     // Cleanup

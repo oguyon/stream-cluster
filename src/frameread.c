@@ -348,6 +348,10 @@ Frame* getframe_at(long index) {
         free(frame_struct);
         return NULL;
     }
+    
+    frame_struct->cnt0 = 0;
+    frame_struct->atime.tv_sec = 0;
+    frame_struct->atime.tv_nsec = 0;
 
     if (is_ascii_mode) {
         if (fseek(ascii_ptr, ascii_line_offsets[index], SEEK_SET) != 0) {
@@ -430,6 +434,9 @@ Frame* getframe_at(long index) {
             }
         }
         
+        frame_struct->cnt0 = stream_image.md[0].cnt0;
+        frame_struct->atime = stream_image.md[0].atime;
+
         // Pointer offset
         long offset = current_read_slice * nelements;
         

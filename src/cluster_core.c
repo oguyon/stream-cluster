@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <sys/resource.h>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -1171,7 +1172,13 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
         prev_assigned_cluster = assigned_cluster;
 
         state->assignments[state->total_frames_processed] = assigned_cluster;
-        if (ascii_out) fprintf(ascii_out, "%ld %d\n", state->total_frames_processed, assigned_cluster);
+        if (ascii_out) {
+            if (config->stream_input_mode) {
+                fprintf(ascii_out, "%ld %d %lu %ld.%09ld\n", state->total_frames_processed, assigned_cluster, current_frame->cnt0, current_frame->atime.tv_sec, current_frame->atime.tv_nsec);
+            } else {
+                fprintf(ascii_out, "%ld %d\n", state->total_frames_processed, assigned_cluster);
+            }
+        }
 
         state->frame_infos[state->total_frames_processed].assignment = assigned_cluster;
         state->frame_infos[state->total_frames_processed].num_dists = temp_count;
@@ -1239,6 +1246,12 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     printf("Analysis complete.\n");
     printf("Total clusters: %d\n", state->num_clusters);
     printf("Processing time: %.3f ms\n", elapsed_ms);
+    
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+        printf("Max Memory: %ld KB\n", usage.ru_maxrss);
+    }
+
     printf("Framedist calls: %ld\n", state->framedist_calls);
 
     if (ascii_out) fclose(ascii_out);
