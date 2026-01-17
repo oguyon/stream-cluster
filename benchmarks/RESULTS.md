@@ -11,43 +11,80 @@ This file compiles tests and benchmarks for the gric-cluster program, with a sho
 
 In this first test, a 2D point slowly oves outward in a spiral pattern.
 
+The pattern is written to a text file with:
 ```
 ./gric-mktxtseq 20000 2Dspiral.txt 2Dspiral
 # OUTPUT:
-# 2Dspiral.txt
+# 2Dspiral.txt (20000 samples)
 ```
 
+### Clustering from the 2D txt input
 
-
-
-### txt output (2D)
+The samples are clustered with:
 ```
-./gric-cluster [options] 0.1 2Dspiral.txt
+./gric-cluster 0.095 2Dspiral.txt
 # OUTPUT:
+# 2Dspiral.clusterdat/cluster_run.log
+# 2Dspiral.clusterdat/frame_membership.txt
+# 2Dspiral.clusterdat/dcc.txt
+```
+Here, the cluster radius value has been adjusted to get 100 clusters.
 
+Results can be visualized with the plot utility:
+```
+./gric-plot 2Dspiral.txt 2Dspiral.clusterdat/cluster_run.log ./plot/plot.2Dspiral.png
 ```
 
+The 20000 samples are clustered in 100 clusters with 25091 distance computations (average: 1.255 dist computations per sample). Most samples are resolved with a single distance computation thanks to the slow-moving sample coordinates.
+
+The only samples requiring more than one distance computation occur when the point is moving out of a pre-existing cluster - which happens 100 times. Anywhere from 2 to 4 distcomps are then required to resolve the frame, which in this case consists of confirming that the sample does not belong to any pre-existing cluster, resulting in a new cluster being created.
+
+With 100 clusters, 4950 inter-cluster distances are computed: this is the main contributor to the extra distcomps over the number of samples. This overhead is inherent to GRIC, and becomes proportionally smaller as the number of samples increases.
 
 
 
 ### Image output 
 
-Write 2D spot to stream, with cnt2sync:
+
+Here we operate in high dimension (256x256 pixel images = 65536 dimensions), but with the high dimensional image derived from a low-dimension input. This is reprentative of high-dimension clustering where there exists an (unknown at clustering time) relationship between a small number of input variables and the high-dimension observable. Clustering is deployed to reveal this relationship, grouping high-D samples to they can be related to the low-D variables.
+
+We use the `gric-ascii-spot-2-video` to convert the 2D input (2Dspiral.txt file) into a high-D image. The 2 coordinates encode the centroid position of a gaussian spot. We use here the streaming output mode with the cnt2 synchronization to avoid writing a large video file on the filesystem. This program will produce images on demand (one image per line in the 2Dspiral.txt), waiting for the clustering program to process frames to deliver the next frame. This synchronization is done with ImageStreamIO's cnt2 entry, with the writer waiting for cnt2 to be incremented above cnt0, and the reader incrementing cnt2 to request a new frame.
+
+ 
+Writer: write 2D spot to stream, with cnt2sync:
 ```
-gric-ascii-spot-2-video 256 0.1 2Dspiral.txt spot2d -isio -cnt2sync
+# Will write as many frames as there are lines in file 2Dspiral.txt (20000)
+./gric-ascii-spot-2-video 256 0.1 2Dspiral.txt spot2d -isio -cnt2sync
 ```
 
-Then run clustering:
+Then we run clustering (reader):
 ```
-gric-cluster 0.1 -stream -cmt2sync spot2d
+# Will cluster until no more frames are received (default timeout 1sec)
+./gric-cluster -stream -cnt2sync 2560 spot2d
 ```
 
-0.1 2600
-0.2 2370
-0.4 1450
-0.8  520
-1.0  350
-1.2  250
+And results are plotted with:
+```
+./gric-plot 2Dspiral.txt spot2d.clusterdat/cluster_run.log ./plot/plot.2Dspiral.im256.png
+```
+
+The 20000 samples are clustered in 100 clusters with 25145 distance computations (average: 1.257 dist computations per sample). Most samples are resolved with a single distance computation thanks to the slow-evolving input.
+
+The cluster radius has been adjusted to yield 100 clusters, but there is no simple direct relationship between distance in the 2D space and distance in this high-D (images) space. The 2D cluster-to-cluster distance matrix shows that the high-D distance saturates when the spots do not overlap. With increased the spot size (sigma) there is more overlap, and the clustering radius should be reduced to still yield the same number of clusters. Empirically, the following pairs of (sigma, rlim) values yield 100 clusters with this 2Dspiral pattern: (0.1 2560), (0.2 2370), (0.4 1450), (0.8 520), (1.0 350) and (1.2 250).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
