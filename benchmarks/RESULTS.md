@@ -32,10 +32,10 @@ Here, the cluster radius value has been adjusted to get 100 clusters.
 
 Results can be visualized with the plot utility:
 ```
-./gric-plot 2Dspiral.txt 2Dspiral.clusterdat/cluster_run.log ./plot/plot.2Dspiral.png
+./gric-plot 2Dspiral.txt 2Dspiral.clusterdat/cluster_run.log ./plots/plot.2Dspiral.png
 ```
 
-![2D spiral](./plot/plot.2Dspiral.png)
+![2D spiral](./plots/plot.2Dspiral.png)
 
 
 The 20000 samples are clustered in 100 clusters with 25091 distance computations (average: 1.255 dist computations per sample). Most samples are resolved with a single distance computation thanks to the slow-moving sample coordinates.
@@ -68,10 +68,10 @@ Then we run clustering (reader):
 
 And results are plotted with:
 ```
-./gric-plot 2Dspiral.txt spot2d.clusterdat/cluster_run.log ./plot/plot.2Dspiral.im256.png
+./gric-plot 2Dspiral.txt spot2d.clusterdat/cluster_run.log ./plots/plot.2Dspiral.im256.png
 ```
 
-![2D image: spot moving along spiral](./plot/plot.2Dspiral.im256.png)
+![2D image: spot moving along spiral](./plots/plot.2Dspiral.im256.png)
 
 The 20000 samples are clustered in 100 clusters with 25145 distance computations (average: 1.257 dist computations per sample). Most samples are resolved with a single distance computation thanks to the slow-evolving input.
 
