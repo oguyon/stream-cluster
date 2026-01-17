@@ -35,6 +35,9 @@ Results can be visualized with the plot utility:
 ./gric-plot 2Dspiral.txt 2Dspiral.clusterdat/cluster_run.log ./plot/plot.2Dspiral.png
 ```
 
+![2D spiral](./plot/plot.2Dspiral.png)
+
+
 The 20000 samples are clustered in 100 clusters with 25091 distance computations (average: 1.255 dist computations per sample). Most samples are resolved with a single distance computation thanks to the slow-moving sample coordinates.
 
 The only samples requiring more than one distance computation occur when the point is moving out of a pre-existing cluster - which happens 100 times. Anywhere from 2 to 4 distcomps are then required to resolve the frame, which in this case consists of confirming that the sample does not belong to any pre-existing cluster, resulting in a new cluster being created.
@@ -43,7 +46,7 @@ With 100 clusters, 4950 inter-cluster distances are computed: this is the main c
 
 
 
-### Image output 
+### High Dimension input
 
 
 Here we operate in high dimension (256x256 pixel images = 65536 dimensions), but with the high dimensional image derived from a low-dimension input. This is reprentative of high-dimension clustering where there exists an (unknown at clustering time) relationship between a small number of input variables and the high-dimension observable. Clustering is deployed to reveal this relationship, grouping high-D samples to they can be related to the low-D variables.
@@ -68,11 +71,15 @@ And results are plotted with:
 ./gric-plot 2Dspiral.txt spot2d.clusterdat/cluster_run.log ./plot/plot.2Dspiral.im256.png
 ```
 
+![2D image: spot moving along spiral](./plot/plot.2Dspiral.im256.png)
+
 The 20000 samples are clustered in 100 clusters with 25145 distance computations (average: 1.257 dist computations per sample). Most samples are resolved with a single distance computation thanks to the slow-evolving input.
 
 The cluster radius has been adjusted to yield 100 clusters, but there is no simple direct relationship between distance in the 2D space and distance in this high-D (images) space. The 2D cluster-to-cluster distance matrix shows that the high-D distance saturates when the spots do not overlap. With increased the spot size (sigma) there is more overlap, and the clustering radius should be reduced to still yield the same number of clusters. Empirically, the following pairs of (sigma, rlim) values yield 100 clusters with this 2Dspiral pattern: (0.1 2560), (0.2 2370), (0.4 1450), (0.8 520), (1.0 350) and (1.2 250).
 
 
+
+### Large number of frames in high dimension
 
 
 
