@@ -85,6 +85,8 @@ typedef struct {
     int max_steps_recorded;
     long *transition_matrix;
     double *mixed_probs;
+    long *dist_counts; // Histogram of distance counts
+    long *pruned_counts_by_dist; // Histogram of pruned counts
 } ClusterState;
 
 // Candidate structure for sorting

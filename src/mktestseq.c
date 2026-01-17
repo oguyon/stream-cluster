@@ -167,8 +167,8 @@ void print_args_on_error(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        printf("Usage: %s <N> <filename> [pattern] [options]\n", argv[0]);
+    if (argc < 4) {
+        printf("Usage: gric-mktxtseq <N> <output_file> <pattern> [options]\n");
         printf("Patterns:\n");
         printf("  [ND]random      Uniform random in unit hypercube/sphere (default 2D)\n");
         printf("  [ND]sphere      Random points on unit hypersphere surface\n");

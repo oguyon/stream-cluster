@@ -29,7 +29,7 @@ print_help() {
     echo "                        Available: ${ALL_PATTERNS[*]}"
     echo "  -t, --type <type>     Select input type: txt (default) or mp4"
     echo "  -a, --algo <algo>     Select algorithm: stream (default) or birch"
-    echo "  -o, --options <str>   Pass additional options to image-cluster (e.g. \"-gprob\")."
+    echo "  -o, --options <str>   Pass additional options to gric-cluster (e.g. \"-gprob\")."
     echo "                        Can be used multiple times to add more options."
     echo "  -mp4r                 Re-use mp4/txt files if they already exist"
     echo "  -maxcl <N>            Set max number of clusters (default: 1000)"
@@ -126,10 +126,10 @@ mkdir -p benchmark_out
 mkdir -p clusteroutdir
 
 # Executables
-MKSEQEXEC="../build/image-cluster-mktxtseq"
-RNUCLEXEC="../build/image-cluster"
-CLPLOT="../build/image-cluster-plot"
-TXT2MP4="../build/ascii-spot-2-video"
+MKSEQEXEC="../build/gric-mktxtseq"
+RNUCLEXEC="../build/gric-cluster"
+CLPLOT="../build/gric-plot"
+TXT2MP4="../build/gric-ascii-spot-2-video"
 
 # Set MAXIM to match NBSAMPLE
 MAXIM=$NBSAMPLE
@@ -245,7 +245,7 @@ for pattern in "${SELECTED_PATTERNS[@]}"; do
     MEM="N/A"
     
     if [[ "$ALGORITHM" == "stream" ]]; then
-        echo "Running image-cluster on $INPUT_FILE (rlim=$CUR_RLIM)..."
+        echo "Running gric-cluster on $INPUT_FILE (rlim=$CUR_RLIM)..."
         
         # Add -stream flag if type is stream
         EXTRA_FLAGS=""
@@ -267,7 +267,7 @@ for pattern in "${SELECTED_PATTERNS[@]}"; do
         
         # Plot if TXT and Stream (Optional)
         if [[ "$INPUT_TYPE" == "txt" ]]; then
-            $CLPLOT "$OUT_DIR/${INPUT_FILE%.txt}.clustered.txt" -png > /dev/null 2>&1 || true
+            $CLPLOT "$INPUT_FILE" "$LOG_FILE" > /dev/null 2>&1 || true
         fi
 
     elif [[ "$ALGORITHM" == "birch" ]]; then

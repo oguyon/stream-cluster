@@ -13,8 +13,8 @@ VID_RLIM=$(echo "scale=4; 1000.0 * $FACTOR" | bc)
 
 echo "Using VID_RLIM=$VID_RLIM for VID_SIZE=$VID_SIZE"
 
-TXT2MP4="../build/ascii-spot-2-video"
-RNUCLEXEC="../build/image-cluster"
+TXT2MP4="../build/gric-ascii-spot-2-video"
+RNUCLEXEC="../build/gric-cluster"
 OPTIONS="-maxim $VID_MAX_FRAMES -outdir clusteroutdir"
 
 run_video_case() {
@@ -32,7 +32,7 @@ run_video_case() {
     fi
     
     # 2. Run Stream Cluster
-    echo "Running image-cluster..."
+    echo "Running gric-cluster..."
     LOG_FILE="benchmark_out/${TEST_NAME}_video.log"
     $RNUCLEXEC $VID_RLIM $OPTIONS $MP4_FILE > "$LOG_FILE"
     

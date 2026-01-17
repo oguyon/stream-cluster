@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(image_cluster C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 17)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -71,11 +71,11 @@ link_directories(
 # Sources
 set(CLUSTER_SRCS src/main.c src/cluster_core.c src/cluster_io.c src/framedistance.c src/frameread.c src/png_io.c)
 
-add_executable(image-cluster ${CLUSTER_SRCS})
+add_executable(gric-cluster ${CLUSTER_SRCS})
 if (OpenMP_C_FOUND)
-    target_link_libraries(image-cluster OpenMP::OpenMP_C)
+    target_link_libraries(gric-cluster OpenMP::OpenMP_C)
 endif()
-target_link_libraries(image-cluster
+target_link_libraries(gric-cluster
     ${CFITSIO_LIBRARIES}
     ${PNG_LIBRARIES}
     ${FFMPEG_LIBRARIES}
@@ -83,21 +83,22 @@ target_link_libraries(image-cluster
     m
 )
 
+add_executable(gric-mktxtseq src/mktestseq.c)
+target_link_libraries(gric-mktxtseq m)
 
+add_executable(gric-plot src/plot_clusters.c)
+target_link_libraries(gric-plot ${PNG_LIBRARIES} m)
 
-add_executable(image-cluster-mktxtseq src/mktestseq.c)
-target_link_libraries(image-cluster-mktxtseq m)
+add_executable(gric-mkclusteredfile src/mkclusteredfile.c)
+target_link_libraries(gric-mkclusteredfile m)
 
-add_executable(image-cluster-plot src/plot_clusters.c)
-target_link_libraries(image-cluster-plot ${PNG_LIBRARIES} m)
+add_executable(gric-NDmodel src/model_nd.c)
+target_link_libraries(gric-NDmodel m)
 
-add_executable(image-cluster-NDmodel src/model_nd.c)
-target_link_libraries(image-cluster-NDmodel m)
-
-add_executable(ascii-spot-2-video src/ascii-spot-2-video.c)
-target_link_libraries(ascii-spot-2-video m ${IMAGESTREAMIO_LIBRARIES})
+add_executable(gric-ascii-spot-2-video src/ascii-spot-2-video.c)
+target_link_libraries(gric-ascii-spot-2-video m ${IMAGESTREAMIO_LIBRARIES})
 
 if (IMAGESTREAMIO_FOUND)
-    add_executable(stream_to_pipe src/stream_to_pipe.c)
-    target_link_libraries(stream_to_pipe ${IMAGESTREAMIO_LIBRARIES} m)
+    add_executable(gric-stream-to-pipe src/stream_to_pipe.c)
+    target_link_libraries(gric-stream-to-pipe ${IMAGESTREAMIO_LIBRARIES} m)
 endif()

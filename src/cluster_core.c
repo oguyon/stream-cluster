@@ -545,8 +545,8 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
     state->transition_matrix = (long *)calloc(config->maxnbclust * config->maxnbclust, sizeof(long));
     state->mixed_probs = (double *)calloc(config->maxnbclust, sizeof(double));
 
-    long *dist_counts = (long *)calloc(config->maxnbclust + 1, sizeof(long));
-    long *pruned_counts_by_dist = (long *)calloc(config->maxnbclust + 1, sizeof(long));
+    state->dist_counts = (long *)calloc(config->maxnbclust + 1, sizeof(long));
+    state->pruned_counts_by_dist = (long *)calloc(config->maxnbclust + 1, sizeof(long));
 
     int *temp_indices = (int *)malloc(config->maxnbclust * sizeof(int));
     double *temp_dists = (double *)malloc(config->maxnbclust * sizeof(double));
@@ -1171,7 +1171,13 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
         prev_assigned_cluster = assigned_cluster;
 
         state->assignments[state->total_frames_processed] = assigned_cluster;
-        if (ascii_out) fprintf(ascii_out, "%ld %d\n", state->total_frames_processed, assigned_cluster);
+        if (ascii_out) {
+            if (config->stream_input_mode) {
+                fprintf(ascii_out, "%ld %d %lu %ld.%09ld\n", state->total_frames_processed, assigned_cluster, current_frame->cnt0, current_frame->atime.tv_sec, current_frame->atime.tv_nsec);
+            } else {
+                fprintf(ascii_out, "%ld %d\n", state->total_frames_processed, assigned_cluster);
+            }
+        }
 
         state->frame_infos[state->total_frames_processed].assignment = assigned_cluster;
         state->frame_infos[state->total_frames_processed].num_dists = temp_count;
@@ -1189,9 +1195,9 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
 
         state->total_frames_processed++;
 
-        if (temp_count <= config->maxnbclust) {
-            dist_counts[temp_count]++;
-            pruned_counts_by_dist[temp_count] += (state->clusters_pruned - start_pruned_val);
+        if (state->dist_counts && temp_count <= config->maxnbclust) {
+            state->dist_counts[temp_count]++;
+            state->pruned_counts_by_dist[temp_count] += (state->clusters_pruned - start_pruned_val);
         }
 
         if (config->progress_mode && (state->total_frames_processed % 10 == 0 || state->total_frames_processed == actual_frames)) {
@@ -1243,24 +1249,14 @@ void run_clustering(ClusterConfig *config, ClusterState *state) {
 
     if (ascii_out) fclose(ascii_out);
 
-    // Report pruning stats
-    printf("Average fraction of clusters pruned per step:\n");
-    for (int k = 0; k < state->max_steps_recorded; k++) {
-        if (state->step_counts[k] > 0) {
-            printf("  Step %d: %.4f (averaged over %ld frames)\n", k, state->pruned_fraction_sum[k] / state->step_counts[k], state->step_counts[k]);
-        } else if (k > 0 && state->step_counts[k] == 0) {
-            break;
+    if (state->dist_counts) {
+        printf("Samples resolved per distance count:\n");
+        for (int k = 0; k <= config->maxnbclust; k++) {
+            if (state->dist_counts[k] > 0) {
+                printf("  Count %4d: %8ld samples, %12ld samples pruned away\n", k, state->dist_counts[k], state->pruned_counts_by_dist[k]);
+            }
         }
     }
-
-    printf("Samples resolved per distance count:\n");
-    for (int k = 0; k <= config->maxnbclust; k++) {
-        if (dist_counts[k] > 0) {
-            printf("  Count %4d: %8ld samples, %12ld samples pruned away\n", k, dist_counts[k], pruned_counts_by_dist[k]);
-        }
-    }
-    free(dist_counts);
-    free(pruned_counts_by_dist);
 
     free(temp_indices);
     free(temp_dists);

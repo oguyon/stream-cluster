@@ -40,7 +40,7 @@ char* create_output_dir_name(const char* input_file) {
 }
 
 void print_usage(char *progname) {
-    printf("Usage: %s [options] <rlim> <input_file|stream_name>\n", progname);
+    printf("Usage: gric-cluster [options] <rlim> <input_file|stream_name>\n");
     printf("Arguments:\n");
     printf("  <rlim>         Clustering radius limit.\n");
     printf("  <input_file>   Input file (ASCII");
@@ -433,5 +433,72 @@ void write_results(ClusterConfig *config, ClusterState *state) {
         free(clustered_fname);
     }
     free(cluster_counts);
+    free(out_dir);
+}
+
+void write_run_log(ClusterConfig *config, ClusterState *state, const char *cmdline, struct timespec start_ts, double clust_ms, double out_ms, long max_rss) {
+    char *out_dir = NULL;
+    if (config->user_outdir) out_dir = strdup(config->user_outdir);
+    else out_dir = create_output_dir_name(config->fits_filename);
+
+    if (!out_dir) return;
+
+    char log_path[4096];
+    snprintf(log_path, sizeof(log_path), "%s/cluster_run.log", out_dir);
+    FILE *f = fopen(log_path, "w");
+    if (f) {
+        char time_buf[64];
+        struct tm *tm_info = localtime(&start_ts.tv_sec);
+        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
+
+        fprintf(f, "CMD: %s\n", cmdline);
+        fprintf(f, "START_TIME: %s.%09ld\n", time_buf, start_ts.tv_nsec);
+        fprintf(f, "TIME_CLUSTERING_MS: %.3f\n", clust_ms);
+        fprintf(f, "TIME_OUTPUT_MS: %.3f\n", out_ms);
+        fprintf(f, "OUTPUT_DIR: %s\n", out_dir);
+        fprintf(f, "PARAM_RLIM: %f\n", config->rlim);
+        fprintf(f, "PARAM_DPROB: %f\n", config->deltaprob);
+        fprintf(f, "PARAM_MAXCL: %d\n", config->maxnbclust);
+        fprintf(f, "PARAM_MAXIM: %ld\n", config->maxnbfr);
+        fprintf(f, "PARAM_GPROB: %d\n", config->gprob_mode);
+        fprintf(f, "PARAM_FMATCHA: %f\n", config->fmatch_a);
+        fprintf(f, "PARAM_FMATCHB: %f\n", config->fmatch_b);
+        fprintf(f, "PARAM_TE4: %d\n", config->te4_mode);
+        fprintf(f, "PARAM_TE5: %d\n", config->te5_mode);
+        
+        if (config->output_dcc) fprintf(f, "OUTPUT_FILE: %s/dcc.txt\n", out_dir);
+        if (config->output_tm) fprintf(f, "OUTPUT_FILE: %s/transition_matrix.txt\n", out_dir);
+        if (config->output_anchors) fprintf(f, "OUTPUT_FILE: %s/anchors.txt\n", out_dir);
+        if (config->output_counts) fprintf(f, "OUTPUT_FILE: %s/cluster_counts.txt\n", out_dir);
+        if (config->output_membership) fprintf(f, "OUTPUT_FILE: %s/frame_membership.txt\n", out_dir);
+
+        if (config->output_clustered) {
+            const char *base_name_only = strrchr(config->fits_filename, '/');
+            if (base_name_only) base_name_only++;
+            else base_name_only = config->fits_filename;
+            char *temp_base = strdup(base_name_only);
+            char *ext = strrchr(temp_base, '.');
+            if (ext && strcmp(ext, ".txt") == 0) *ext = '\0';
+            fprintf(f, "CLUSTERED_FILE: %s/%s.clustered.txt\n", out_dir, temp_base);
+            free(temp_base);
+        }
+
+        fprintf(f, "STATS_CLUSTERS: %d\n", state->num_clusters);
+        fprintf(f, "STATS_FRAMES: %ld\n", state->total_frames_processed);
+        fprintf(f, "STATS_DISTS: %ld\n", state->framedist_calls);
+        fprintf(f, "STATS_PRUNED: %ld\n", state->clusters_pruned);
+        fprintf(f, "STATS_MAX_RSS_KB: %ld\n", max_rss);
+
+        fprintf(f, "STATS_DIST_HIST_START\n");
+        for (int k = 0; k <= config->maxnbclust; k++) {
+            if (state->dist_counts && state->dist_counts[k] > 0) {
+                fprintf(f, "%d %ld %ld\n", k, state->dist_counts[k], state->pruned_counts_by_dist[k]);
+            }
+        }
+        fprintf(f, "STATS_DIST_HIST_END\n");
+        
+        fclose(f);
+        printf("Log written to %s\n", log_path);
+    }
     free(out_dir);
 }

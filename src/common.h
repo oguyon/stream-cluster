@@ -2,12 +2,16 @@
 #define COMMON_H
 
 #include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
 
 typedef struct {
     double *data;
     long width;
     long height;
     int id;
+    uint64_t cnt0;
+    struct timespec atime;
 } Frame;
 
 typedef struct {

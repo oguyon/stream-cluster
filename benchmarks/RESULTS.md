@@ -1,7 +1,6 @@
-
 # Overview
 
-This file compiles tests and benchmarks for the image-cluster program, with a short discussion of results in comments.
+This file compiles tests and benchmarks for the gric-cluster program, with a short discussion of results in comments.
 
 
 
@@ -13,16 +12,17 @@ This file compiles tests and benchmarks for the image-cluster program, with a sh
 In this first test, a 2D point slowly oves outward in a spiral pattern.
 
 ```
-./image-cluster-mktxtseq 20000 2Dspiral.txt 2Dspiral
+./gric-mktxtseq 20000 2Dspiral.txt 2Dspiral
 # OUTPUT:
 # 2Dspiral.txt
 ```
 
 
 
+
 ### txt output (2D)
 ```
-./image-cluster 0.1 2Dspiral.txt
+./gric-cluster [options] 0.1 2Dspiral.txt
 # OUTPUT:
 
 ```
@@ -34,12 +34,12 @@ In this first test, a 2D point slowly oves outward in a spiral pattern.
 
 Write 2D spot to stream, with cnt2sync:
 ```
-ascii-spot-2-video 256 0.1 2Dspiral.txt spot2d -isio -cnt2sync
+gric-ascii-spot-2-video 256 0.1 2Dspiral.txt spot2d -isio -cnt2sync
 ```
 
 Then run clustering:
 ```
-image-cluster 0.1 -stream -cmt2sync spot2d
+gric-cluster 0.1 -stream -cmt2sync spot2d
 ```
 
 0.1 2600
@@ -62,7 +62,7 @@ NOOUTPUTOPT="-no_dcc -no_tm -no_clustered -no_anchors -no_counts -no_membership 
 
 
 # TESTING STREAMING
-CLUSTEREXEC="/home/oguyon/src/stream-cluster/build/image-cluster"
+CLUSTEREXEC="/home/oguyon/src/stream-cluster/build/gric-cluster"
 
 $CLUSTEREXEC 50.0 $NOOUTPUTOPT -maxim $NBSAMPLE -maxcl $MAXNBCL -stream earth.cb1024
 
@@ -116,9 +116,9 @@ exit
 
 
 
-MKSEQEXEC="../build/image-cluster-mktxtseq"
-RNUCLEXEC="../build/image-cluster"
-CLPLOT="../build/image-cluster-plot"
+MKSEQEXEC="../build/gric-mktxtseq"
+RNUCLEXEC="../build/gric-cluster"
+CLPLOT="../build/gric-plot"
 
 NBSAMPLE=1000000
 RLIM="0.10"
@@ -135,7 +135,7 @@ OPTIONS="-maxim $NBSAMPLE -outdir clusteroutdir"
 #
 $MKSEQEXEC $NBSAMPLE 2Dspiral.txt 2Dspiral
 $RNUCLEXEC $RLIM $OPTIONS 2Dspiral.txt
-$CLPLOT 2Dspiral.clustered.txt -png
+$CLPLOT 2Dspiral.txt clusteroutdir/cluster_run.log
 
 
 
@@ -152,7 +152,7 @@ $CLPLOT 2Dspiral.clustered.txt -png
 #
 $MKSEQEXEC $NBSAMPLE 2Dcircle-shuffle.txt 2Dcircle -shuffle
 $RNUCLEXEC $RLIM $OPTIONS 2Dcircle-shuffle.txt
-$CLPLOT 2Dcircle-shuffle.clustered.txt -png
+$CLPLOT 2Dcircle-shuffle.txt clusteroutdir/cluster_run.log
 
 # Random points on spiral
 # Demonstrates geometric gain
@@ -164,7 +164,7 @@ $CLPLOT 2Dcircle-shuffle.clustered.txt -png
 #
 $MKSEQEXEC $NBSAMPLE 2Dspiral-shuffle.txt 2Dspiral -shuffle
 $RNUCLEXEC $RLIM $OPTIONS 2Dspiral-shuffle.txt
-$CLPLOT 2Dspiral-shuffle.clustered.txt -png
+$CLPLOT 2Dspiral-shuffle.txt clusteroutdir/cluster_run.log
 
 
 # gprob option to learn the fine geometrical structure
@@ -187,7 +187,7 @@ RLIM="0.10"
 #
 $MKSEQEXEC $NBSAMPLE 2Drand.txt 2Drand
 $RNUCLEXEC $RLIM $OPTIONS 2Drand.txt
-$CLPLOT 2Drand.clustered.txt -png
+$CLPLOT 2Drand.txt clusteroutdir/cluster_run.log
 
 
 
@@ -201,7 +201,7 @@ $CLPLOT 2Drand.clustered.txt -png
 #
 $MKSEQEXEC $NBSAMPLE 3Drand.txt 3Drand
 $RNUCLEXEC $RLIM -maxcl 10000 $OPTIONS 3Drand.txt
-$CLPLOT 3Drand.clustered.txt -png
+$CLPLOT 3Drand.txt clusteroutdir/cluster_run.log
 
 
 
@@ -211,15 +211,8 @@ $CLPLOT 3Drand.clustered.txt -png
 #
 $MKSEQEXEC $NBSAMPLE 2DcircleP10n.txt 2Dcircle10 -noise 0.04
 $RNUCLEXEC $RLIM $OPTIONS 2DcircleP10n.txt
-$CLPLOT 2DcircleP10n.clustered.txt -png
+$CLPLOT 2DcircleP10n.txt clusteroutdir/cluster_run.log
 
 # 1.0 
 #
 $RNUCLEXEC $RLIM -maxcl 10000 -pred[10,100,1] -maxim $NBSAMPLE 2DcircleP10n.txt
-
-
-
-
-
-
-

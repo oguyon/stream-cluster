@@ -1,10 +1,11 @@
-#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/resource.h>
 #include "cluster_defs.h"
 #include "cluster_core.h"
 #include "cluster_io.h"
@@ -25,9 +26,21 @@ void print_args_on_error(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    struct timespec prog_start;
+    clock_gettime(CLOCK_REALTIME, &prog_start);
+
+    char *cmdline = (char *)malloc(8192);
+    if (cmdline) {
+        cmdline[0] = '\0';
+        for (int i = 0; i < argc; i++) {
+            strcat(cmdline, argv[i]);
+            if (i < argc - 1) strcat(cmdline, " ");
+        }
+    }
+
     if (argc < 2) {
         print_usage(argv[0]);
-        print_args_on_error(argc, argv);
+        if (cmdline) free(cmdline);
         return 1;
     }
 
@@ -48,8 +61,8 @@ int main(int argc, char *argv[]) {
     config.maxcl_strategy = MAXCL_STOP;
     config.discard_fraction = 0.5;
 
-    // Output defaults (disabled by default, except membership)
-    config.output_dcc = 0;
+    // Output defaults (disabled by default, except membership and dcc)
+    config.output_dcc = 1;
     config.output_tm = 0;
     config.output_anchors = 0;
     config.output_counts = 0;
@@ -111,12 +124,11 @@ int main(int argc, char *argv[]) {
             else if (strcmp(strategy, "merge") == 0) config.maxcl_strategy = MAXCL_MERGE;
             else {
                 fprintf(stderr, "Error: Unknown maxcl_strategy '%s'. Use 'stop', 'discard', or 'merge'.\n", strategy);
+                if (cmdline) free(cmdline);
                 return 1;
             }
         } else if (strcmp(argv[arg_idx], "-discard_frac") == 0) {
             config.discard_fraction = atof(argv[++arg_idx]);
-        } else if (strcmp(argv[arg_idx], "-dcc") == 0) {
-            config.output_dcc = 1;
         } else if (strcmp(argv[arg_idx], "-tm_out") == 0) {
             config.output_tm = 1;
         } else if (strcmp(argv[arg_idx], "-anchors") == 0) {
@@ -147,6 +159,7 @@ int main(int argc, char *argv[]) {
         } else if (argv[arg_idx][0] == '-') {
             fprintf(stderr, "Error: Unknown option: %s\n", argv[arg_idx]);
             print_usage(argv[0]);
+            if (cmdline) free(cmdline);
             print_args_on_error(argc, argv);
             return 1;
         } else {
@@ -156,6 +169,7 @@ int main(int argc, char *argv[]) {
                     config.auto_rlim_factor = strtod(argv[arg_idx] + 1, &endptr);
                     if (*endptr != '\0') {
                          fprintf(stderr, "Error: Invalid format for auto-rlim. Expected 'a<float>', got '%s'\n", argv[arg_idx]);
+                         if (cmdline) free(cmdline);
                          print_args_on_error(argc, argv);
                          return 1;
                     }
@@ -165,6 +179,7 @@ int main(int argc, char *argv[]) {
                     config.rlim = strtod(argv[arg_idx], &endptr);
                     if (*endptr != '\0') {
                          fprintf(stderr, "Error: Invalid rlim value: %s\n", argv[arg_idx]);
+                         if (cmdline) free(cmdline);
                          print_args_on_error(argc, argv);
                          return 1;
                     }
@@ -173,6 +188,7 @@ int main(int argc, char *argv[]) {
             } else {
                 if (config.fits_filename != NULL) {
                     fprintf(stderr, "Error: Too many arguments or multiple input files specified (already have '%s', found '%s')\n", config.fits_filename, argv[arg_idx]);
+                    if (cmdline) free(cmdline);
                     print_args_on_error(argc, argv);
                     return 1;
                 }
@@ -185,11 +201,13 @@ int main(int argc, char *argv[]) {
     if (!config.fits_filename) {
         fprintf(stderr, "Error: Missing input file or stream name.\n");
         if (!config.scandist_mode) print_usage(argv[0]);
+        if (cmdline) free(cmdline);
         print_args_on_error(argc, argv);
         return 1;
     }
 
     if (init_frameread(config.fits_filename, config.stream_input_mode, config.cnt2sync_mode) != 0) {
+        if (cmdline) free(cmdline);
         print_args_on_error(argc, argv);
         return 1;
     }
@@ -207,6 +225,7 @@ int main(int argc, char *argv[]) {
 
     if (!out_dir) {
         perror("Memory allocation failed for output directory name");
+        if (cmdline) free(cmdline);
         return 1;
     }
 
@@ -215,6 +234,7 @@ int main(int argc, char *argv[]) {
         if (mkdir(out_dir, 0777) != 0) {
             perror("Failed to create output directory");
             free(out_dir);
+            if (cmdline) free(cmdline);
             return 1;
         }
     }
@@ -242,6 +262,7 @@ int main(int argc, char *argv[]) {
         state.distall_out = fopen(out_path, "w");
         if (!state.distall_out) {
             perror("Failed to open distall.txt in output directory");
+            if (cmdline) free(cmdline);
             return 1;
         }
         // ... (header printing)
@@ -258,6 +279,7 @@ int main(int argc, char *argv[]) {
              if (state.distall_out) fclose(state.distall_out);
              close_frameread();
              if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
+             if (cmdline) free(cmdline);
              return 0;
         }
         reset_frameread();
@@ -274,12 +296,29 @@ int main(int argc, char *argv[]) {
     state.clmembflag = (int *)malloc(config.maxnbclust * sizeof(int));
 
     // Run Clustering
+    struct timespec clust_start, clust_end;
+    clock_gettime(CLOCK_MONOTONIC, &clust_start);
     run_clustering(&config, &state);
+    clock_gettime(CLOCK_MONOTONIC, &clust_end);
+    double clust_ms = (clust_end.tv_sec - clust_start.tv_sec) * 1000.0 + (clust_end.tv_nsec - clust_start.tv_nsec) / 1000000.0;
 
     if (state.distall_out) fclose(state.distall_out);
 
     // Write Results
+    struct timespec out_start, out_end;
+    clock_gettime(CLOCK_MONOTONIC, &out_start);
     write_results(&config, &state);
+    clock_gettime(CLOCK_MONOTONIC, &out_end);
+    double out_ms = (out_end.tv_sec - out_start.tv_sec) * 1000.0 + (out_end.tv_nsec - out_start.tv_nsec) / 1000000.0;
+
+    struct rusage usage;
+    long max_rss = 0;
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+        max_rss = usage.ru_maxrss;
+    }
+
+    write_run_log(&config, &state, cmdline, prog_start, clust_ms, out_ms, max_rss);
+    if (cmdline) free(cmdline);
 
     // Cleanup
     for (int i = 0; i < state.num_clusters; i++) {
@@ -308,6 +347,8 @@ int main(int argc, char *argv[]) {
     if (state.step_counts) free(state.step_counts);
     if (state.transition_matrix) free(state.transition_matrix);
     if (state.mixed_probs) free(state.mixed_probs);
+    if (state.dist_counts) free(state.dist_counts);
+    if (state.pruned_counts_by_dist) free(state.pruned_counts_by_dist);
 
     if (config.user_outdir && out_dir_alloc) free(config.user_outdir);
 

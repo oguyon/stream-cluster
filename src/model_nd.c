@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     // Check help
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            printf("Usage: %s <dcc_file> <dimensions> <output_file> [options]\n", argv[0]);
+            printf("Usage: gric-NDmodel <dcc_file> <dimensions> <output_file> [options]\n");
             printf("Arguments:\n");
             printf("  <dcc_file>     Input distance matrix file (dcc.txt).\n");
             printf("  <dimensions>   Target dimensionality (N).\n");
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <dcc_file> <dimensions> <output_file> [options]\n", argv[0]);
+        fprintf(stderr, "Usage: gric-NDmodel <dcc_file> <dimensions> <output_file> [options]\n");
         print_args_on_error(argc, argv);
         return 1;
     }

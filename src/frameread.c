@@ -349,6 +349,10 @@ Frame* getframe_at(long index) {
         return NULL;
     }
 
+    frame_struct->cnt0 = 0;
+    frame_struct->atime.tv_sec = 0;
+    frame_struct->atime.tv_nsec = 0;
+
     if (is_ascii_mode) {
         if (fseek(ascii_ptr, ascii_line_offsets[index], SEEK_SET) != 0) {
             perror("fseek failed");
@@ -407,6 +411,9 @@ Frame* getframe_at(long index) {
         // We process one frame forward
         last_cnt0++;
         stream_read_counter++;
+
+        frame_struct->cnt0 = stream_image.md[0].cnt0;
+        frame_struct->atime = stream_image.md[0].atime;
         
         if (is_3d) {
             current_read_slice = (current_read_slice + 1) % stream_depth;
