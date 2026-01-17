@@ -1,3 +1,5 @@
+![GRIC Logo](gric.png)
+
 # High-speed distance-based clustering
 
 **Fast Image Clustering**
