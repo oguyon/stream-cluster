@@ -44,6 +44,8 @@ The only samples requiring more than one distance computation occur when the poi
 
 With 100 clusters, 4950 inter-cluster distances are computed: this is the main contributor to the extra distcomps over the number of samples. This overhead is inherent to GRIC, and becomes proportionally smaller as the number of samples increases.
 
+[!NOTE]
+GRIC first tests if the frame belongs to the same cluster as the previous frame. With slow-moving input, most samples are resolved/confirmed with a single distcomp.
 
 
 ### High Dimension input
